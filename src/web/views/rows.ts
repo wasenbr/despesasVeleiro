@@ -1,4 +1,4 @@
-import type { Expense, Settlement } from "../../shared/types";
+import { natureLabel, type Expense, type Settlement } from "../../shared/types";
 import { html } from "../dom";
 import { brl, fmtDay } from "../format";
 import { catName, userName, userSlot } from "../state";
@@ -11,6 +11,7 @@ export function expenseRow(e: Expense) {
     <button type="button" class="row" data-edit="${e.id}">
       <span class="row-main">
         <span class="row-title">${e.description}</span>
+        ${sale ? "" : html`<span class="tag nat-${e.nature}"><i class="dot" aria-hidden="true"></i>${natureLabel(e.nature)}</span>`}
         <span class="row-sub">${fmtDay(e.date)} · ${catName(e.category_id)} · ${personDot(e.user_id)}</span>
       </span>
       <span class="row-amount ${sale ? "sale" : ""}">${sale ? html`<small class="badge">venda</small> −` : ""}${brl(e.amount_cents)}</span>

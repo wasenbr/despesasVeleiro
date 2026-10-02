@@ -1,10 +1,10 @@
-import type { Expense, Kind } from "../../shared/types";
+import { NATURES, type Expense, type Kind } from "../../shared/types";
 import { html, mount, must } from "../dom";
 import { brl, monthLong, normText } from "../format";
 import { state } from "../state";
 import { expenseRow } from "./rows";
 
-const filters = { q: "", kind: "" as "" | Kind, user: "", cat: "", month: "", limit: 80 };
+const filters = { q: "", kind: "" as "" | Kind, user: "", nature: "", cat: "", month: "", limit: 80 };
 
 function matching(): Expense[] {
   const q = normText(filters.q);
@@ -13,6 +13,7 @@ function matching(): Expense[] {
       (!q || normText(e.description).includes(q)) &&
       (!filters.kind || e.kind === filters.kind) &&
       (!filters.user || String(e.user_id) === filters.user) &&
+      (!filters.nature || (e.kind === "despesa" && e.nature === filters.nature)) &&
       (!filters.cat || (filters.cat === "none" ? e.category_id === null : String(e.category_id) === filters.cat)) &&
       (!filters.month || e.date.startsWith(filters.month)),
   );
@@ -30,9 +31,13 @@ export function renderList(root: HTMLElement): void {
             ([v, label]) => html`<label><input type="radio" name="f-kind" value="${v}" ${filters.kind === v ? "checked" : ""} /><span>${label}</span></label>`,
           )}
         </div>
-        <div class="row3">
-          <select id="f-user" aria-label="Pessoa"><option value="">Todos</option>
+        <div class="row2">
+          <select id="f-user" aria-label="Pessoa"><option value="">Pessoas</option>
             ${state.users.map((u) => html`<option value="${u.id}" ${String(u.id) === filters.user ? "selected" : ""}>${u.name}</option>`)}</select>
+          <select id="f-nature" aria-label="Tipo da despesa"><option value="">Tipos</option>
+            ${NATURES.map((n) => html`<option value="${n.id}" ${n.id === filters.nature ? "selected" : ""}>${n.label}</option>`)}</select>
+        </div>
+        <div class="row2">
           <select id="f-cat" aria-label="Categoria"><option value="">Categorias</option><option value="none" ${filters.cat === "none" ? "selected" : ""}>Sem categoria</option>
             ${state.categories.map((c) => html`<option value="${c.id}" ${String(c.id) === filters.cat ? "selected" : ""}>${c.name}</option>`)}</select>
           <select id="f-month" aria-label="Mês"><option value="">Meses</option>
@@ -50,7 +55,7 @@ export function renderList(root: HTMLElement): void {
   root.querySelectorAll<HTMLInputElement>('input[name="f-kind"]').forEach((r) =>
     r.addEventListener("change", () => ((filters.kind = r.value as "" | Kind), (filters.limit = 80), updateList(root))),
   );
-  for (const [id, key] of [["#f-user", "user"], ["#f-cat", "cat"], ["#f-month", "month"]] as const) {
+  for (const [id, key] of [["#f-user", "user"], ["#f-nature", "nature"], ["#f-cat", "cat"], ["#f-month", "month"]] as const) {
     must<HTMLSelectElement>(id, root).addEventListener("change", (e) => {
       filters[key] = (e.target as HTMLSelectElement).value;
       filters.limit = 80;

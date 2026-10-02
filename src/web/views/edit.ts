@@ -13,7 +13,7 @@ export function openExpenseEditor(id: number): void {
   const dlg = openSheet(
     "Editar lançamento",
     html`${expenseFormHtml("edit-form", {
-      kind: e.kind, amount: centsToInput(e.amount_cents), description: e.description,
+      kind: e.kind, nature: e.nature, amount: centsToInput(e.amount_cents), description: e.description,
       user_id: e.user_id, category_id: e.category_id, date: e.date,
     }, "Salvar alterações")}
       <button type="button" class="btn danger" id="delete-expense">Excluir lançamento</button>`,

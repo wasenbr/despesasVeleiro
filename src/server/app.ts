@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { isNature, natureLabel } from "../shared/types";
 import type { Bootstrap, Category, Expense, Settlement, User } from "../shared/types";
 import { hashPassword, hashToken, newToken, verifyPassword } from "./auth";
 import type { Db } from "./db";
@@ -258,11 +259,14 @@ export function createApp() {
     const db = c.env.DB;
     const kind = data.kind ?? "despesa";
     if (kind !== "despesa" && kind !== "venda") throw new ApiError("Tipo inválido.");
+    const nature = data.nature ?? "outro";
+    if (!isNature(nature)) throw new ApiError("Tipo de despesa inválido.");
     return [
       parseDate(data.date),
       text(data.description, 200, "Descrição"),
       parseAmount(data.amount),
       kind,
+      nature,
       await needUser(db, data.user_id),
       await needCategory(db, data.category_id),
     ] as const;
@@ -278,7 +282,7 @@ export function createApp() {
     const db = c.env.DB;
     const r = await db
       .prepare(
-        "INSERT INTO expenses(date, description, amount_cents, kind, user_id, category_id, created_by) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO expenses(date, description, amount_cents, kind, nature, user_id, category_id, created_by) VALUES (?,?,?,?,?,?,?,?)",
       )
       .bind(...vals, c.get("uid"))
       .run();
@@ -289,7 +293,7 @@ export function createApp() {
   app.put("/api/expenses/:id", async (c) => {
     const vals = await expenseValues(c);
     const r = await c.env.DB
-      .prepare("UPDATE expenses SET date=?, description=?, amount_cents=?, kind=?, user_id=?, category_id=? WHERE id=?")
+      .prepare("UPDATE expenses SET date=?, description=?, amount_cents=?, kind=?, nature=?, user_id=?, category_id=? WHERE id=?")
       .bind(...vals, Number(c.req.param("id")))
       .run();
     if (!r.meta.changes) throw new ApiError("Lançamento não encontrado.", 404);
@@ -384,7 +388,7 @@ export function createApp() {
         )
         .all<Expense & { cat: string | null }>();
       rows = [
-        ["Data", "Descrição", "Tipo", "Valor", "Quem", "Categoria"],
+        ["Data", "Descrição", "Tipo", "Valor", "Quem", "Categoria", "Natureza"],
         ...r.results.map((e) => [
           e.date,
           safe(e.description),
@@ -392,6 +396,7 @@ export function createApp() {
           money(e.amount_cents),
           users.get(e.user_id) ?? "",
           e.cat ?? "",
+          e.kind === "despesa" ? natureLabel(e.nature) : "",
         ]),
       ];
     } else if (kind === "acertos.csv") {

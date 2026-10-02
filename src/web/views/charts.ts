@@ -1,5 +1,5 @@
 import { BarController, BarElement, CategoryScale, Chart, Legend, LinearScale, LineController, LineElement, PointElement, Tooltip } from "chart.js";
-import type { Stats } from "../../shared/types";
+import { NATURES, type Nature, type Stats } from "../../shared/types";
 import { api } from "../api";
 import { html, mount, must } from "../dom";
 import { addMonths, brl, brlCompact, fmtDay, monthShort, todayISO } from "../format";
@@ -8,11 +8,13 @@ import { state, userName } from "../state";
 Chart.register(BarController, BarElement, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 type PeriodKey = "12m" | "ano" | "tudo" | "custom";
-const view = { period: "12m" as PeriodKey, from: "", to: "", split: "pessoa" as "pessoa" | "categoria" };
+const view = { period: "12m" as PeriodKey, from: "", to: "", split: "tipo" as "pessoa" | "categoria" | "tipo" };
 let charts: Chart[] = [];
 
 const css = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const series = (slot: number): string => css(`--c${(slot % 8) + 1}`);
+/** Cores dos tipos de despesa (evitam azul/laranja, que identificam as pessoas). */
+const natureColor = (id: Nature): string => ({ manutencao: series(2), melhoria: series(4), marina: series(6), outro: css("--other") })[id];
 
 function range(): { from: string | null; to: string | null } {
   const today = todayISO();
@@ -111,6 +113,7 @@ function draw(root: HTMLElement, s: Stats): void {
     return;
   }
   const maxCat = Math.max(...s.categories.map((c) => c.total), 1);
+  const maxNature = Math.max(...s.natures.map((n) => n.total), 1);
   const catColors = categoryColors(s.category_order);
   const monthLabels = s.monthly.map((m) => monthShort(m.month));
 
@@ -125,8 +128,20 @@ function draw(root: HTMLElement, s: Stats): void {
       </div>
 
       <section class="card">
+        <h2>Manutenção, melhoria e marina</h2>
+        <ul class="bars">
+          ${s.natures.map(
+            (n) => html`<li><div class="bar-label"><span>${NATURES.find((x) => x.id === n.id)?.label}</span>
+              <span>${brl(n.total)} <small class="muted">${s.totals.expenses ? Math.round((n.total / s.totals.expenses) * 100) : 0}%</small></span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:${n.total ? Math.max(1, (n.total / maxNature) * 100) : 0}%;background:${natureColor(n.id)}"></div></div></li>`,
+          )}
+        </ul>
+      </section>
+
+      <section class="card">
         <div class="card-head"><h2>Despesas por mês</h2>
           <div class="seg small" role="radiogroup" aria-label="Agrupar por">
+            <label><input type="radio" name="split" value="tipo" ${view.split === "tipo" ? "checked" : ""} /><span>Tipo</span></label>
             <label><input type="radio" name="split" value="pessoa" ${view.split === "pessoa" ? "checked" : ""} /><span>Pessoa</span></label>
             <label><input type="radio" name="split" value="categoria" ${view.split === "categoria" ? "checked" : ""} /><span>Categoria</span></label>
           </div></div>
@@ -174,7 +189,7 @@ function draw(root: HTMLElement, s: Stats): void {
 
   body.querySelectorAll<HTMLInputElement>('input[name="split"]').forEach((r) =>
     r.addEventListener("change", () => {
-      view.split = r.value as "pessoa" | "categoria";
+      view.split = r.value as "pessoa" | "categoria" | "tipo";
       draw(root, s);
     }),
   );
@@ -185,7 +200,9 @@ function draw(root: HTMLElement, s: Stats): void {
   const sets =
     view.split === "pessoa"
       ? state.users.map((u, i) => ({ label: u.name, color: series(i), data: s.monthly.map((m) => m.by_user[u.id] ?? 0) }))
-      : s.category_order.map((n) => ({ label: n, color: catColors[n]!, data: s.monthly.map((m) => m.by_category[n] ?? 0) }));
+      : view.split === "tipo"
+        ? NATURES.filter((n) => s.natures.find((x) => x.id === n.id)?.total).map((n) => ({ label: n.label, color: natureColor(n.id), data: s.monthly.map((m) => m.by_nature[n.id] ?? 0) }))
+        : s.category_order.map((n) => ({ label: n, color: catColors[n]!, data: s.monthly.map((m) => m.by_category[n] ?? 0) }));
   charts.push(
     new Chart(must<HTMLCanvasElement>("#c-monthly", body), {
       type: "bar",

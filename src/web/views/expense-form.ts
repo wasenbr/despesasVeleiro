@@ -1,5 +1,5 @@
-import { SALES_CATEGORY, categorize } from "../../shared/categorize";
-import type { ExpenseInput, Kind } from "../../shared/types";
+import { SALES_CATEGORY, categorize, suggestNature } from "../../shared/categorize";
+import { NATURES, type ExpenseInput, type Kind, type Nature } from "../../shared/types";
 import { ApiError } from "../api";
 import { Safe, html, must } from "../dom";
 import { moneyInput, normText, todayISO } from "../format";
@@ -7,6 +7,7 @@ import { state, userSlot } from "../state";
 
 export interface FormValues {
   kind: Kind;
+  nature: Nature;
   amount: string;
   description: string;
   user_id: number;
@@ -16,6 +17,7 @@ export interface FormValues {
 
 export const blankValues = (): FormValues => ({
   kind: "despesa",
+  nature: "outro",
   amount: "",
   description: "",
   user_id: state.me,
@@ -48,6 +50,14 @@ export function expenseFormHtml(id: string, v: FormValues, submitLabel: string):
           )}
         </div>
       </div>
+      <div class="field" data-nature-field ${v.kind === "venda" ? "hidden" : ""}>
+        <span>Tipo da despesa</span>
+        <div class="seg small natures" role="radiogroup" aria-label="Tipo da despesa">
+          ${NATURES.map(
+            (n) => html`<label class="nat-${n.id}"><input type="radio" name="nature" value="${n.id}" ${n.id === v.nature ? "checked" : ""} /><span>${n.short}</span></label>`,
+          )}
+        </div>
+      </div>
       <div class="row2 cat-date">
         <label class="field">
           <span>Categoria</span>
@@ -75,9 +85,13 @@ function lastWithDescription(desc: string) {
   return key ? state.expenses.find((e) => normText(e.description) === key) : undefined; // lista já vem do mais novo para o mais antigo
 }
 
-export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: ExpenseInput) => Promise<void>, categoryTouched = false): void {
-  let touched = categoryTouched;
-  const category = field(form, "category_id");
+const natureOf = (form: HTMLFormElement): Nature =>
+  (form.querySelector<HTMLInputElement>('input[name="nature"]:checked')?.value as Nature) ?? "outro";
+
+export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: ExpenseInput) => Promise<void>, editing = false): void {
+  let touched = editing; // categoria escolhida pelo usuário: não sobrescrever com sugestões
+  let natureTouched = editing;
+  const category = form.elements.namedItem("category_id") as HTMLSelectElement;
   const description = field(form, "description");
   const amount = field(form, "amount");
   const error = must<HTMLElement>(".form-error", form);
@@ -87,22 +101,37 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     error.hidden = !msg;
   };
 
-  const suggestCategory = () => {
-    if (touched) return;
-    if (kindOf(form) === "venda") {
-      category.value = String(catId(SALES_CATEGORY) ?? "");
-      return;
-    }
-    const text = description.value.trim();
-    if (!text) {
-      category.value = "";
-      return;
-    }
-    const id = lastWithDescription(text)?.category_id ?? catId(categorize(text));
-    category.value = id !== null ? String(id) : "";
+  const setNature = (n: Nature) => {
+    const radio = form.querySelector<HTMLInputElement>(`input[name="nature"][value="${n}"]`);
+    if (radio) radio.checked = true;
   };
 
-  category.addEventListener("change", () => (touched = true));
+  /** Tipo sugerido: o mesmo da última despesa com essa descrição, senão por palavras e categoria. */
+  const suggestNatureNow = () => {
+    if (natureTouched || kindOf(form) === "venda") return;
+    const text = description.value.trim();
+    const catLabel = category.selectedOptions[0]?.textContent ?? "";
+    const known = lastWithDescription(text);
+    setNature(known && known.kind === "despesa" ? known.nature : text ? suggestNature(text, catLabel) : "outro");
+  };
+
+  const suggestCategory = () => {
+    if (!touched) {
+      if (kindOf(form) === "venda") category.value = String(catId(SALES_CATEGORY) ?? "");
+      else {
+        const text = description.value.trim();
+        const id = text ? (lastWithDescription(text)?.category_id ?? catId(categorize(text))) : null;
+        category.value = id !== null ? String(id) : "";
+      }
+    }
+    suggestNatureNow();
+  };
+
+  category.addEventListener("change", () => {
+    touched = true;
+    suggestNatureNow();
+  });
+  form.querySelectorAll<HTMLInputElement>('input[name="nature"]').forEach((r) => r.addEventListener("change", () => (natureTouched = true)));
   description.addEventListener("input", suggestCategory);
   description.addEventListener("change", () => {
     suggestCategory();
@@ -112,6 +141,7 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
   form.querySelectorAll<HTMLInputElement>('input[name="kind"]').forEach((r) =>
     r.addEventListener("change", () => {
       must("[data-who]", form).textContent = kindOf(form) === "venda" ? "Quem recebeu o dinheiro" : "Quem pagou";
+      must("[data-nature-field]", form).hidden = kindOf(form) === "venda";
       if (kindOf(form) === "despesa" && category.value === String(catId(SALES_CATEGORY))) {
         touched = false;
         category.value = "";
@@ -132,6 +162,7 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     try {
       await onSubmit({
         kind: kindOf(form),
+        nature: kindOf(form) === "venda" ? "outro" : natureOf(form),
         amount: money,
         description: description.value.trim(),
         user_id: Number(form.querySelector<HTMLInputElement>('input[name="user_id"]:checked')?.value),
@@ -151,6 +182,8 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     description.value = "";
     category.value = "";
     touched = false;
+    natureTouched = false;
+    setNature("outro");
     showError("");
   });
 }

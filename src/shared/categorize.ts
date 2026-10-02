@@ -38,3 +38,43 @@ export function categorize(description: string, kind: "despesa" | "venda" = "des
   for (const [name, pattern] of CATEGORY_RULES) if (pattern.test(text)) return name;
   return "Outros";
 }
+
+// ---------------------------------------------------------------- tipo (natureza) do gasto
+
+import type { Nature } from "./types";
+
+/** Palavras que decidem o tipo antes de olhar a categoria (primeira que casar vence). */
+const NATURE_RULES: [Nature, RegExp][] = [
+  ["outro", /^gasolina|churras|cuia|regata|copia chave|inscricao/],
+  [
+    "melhoria",
+    /geladeira|ventilador|placa solar|painel solar|controlador|gps|sonar|garmin|navman|biruta|farol de milha|voltimetro|divisoria|prateleira|marceneiro|\bnov[oa]s?\b.*(genoa|lona|ancora)|genoa|lazzy|zipe|organizador|bolsa ferramentas/,
+  ],
+  ["manutencao", /conserto|reparo|vedac|troca|retirada|bolina|pintura|tinta|epoxi|fibra|oleo|filtro|rabeta|bateria|mangueira|pera|bulbo|tanque|cupilha|cabo|retinida|escota|esticador|manilha/],
+];
+
+const CATEGORY_NATURE: Record<string, Nature> = {
+  Marina: "marina",
+  Marinheiro: "marina",
+  "Clube, títulos e regatas": "marina",
+  "Mão de obra e serviços": "manutencao",
+  "Velas, lonas e capas": "manutencao",
+  "Cabos, ferragens e fundeio": "manutencao",
+  "Motor e combustível": "manutencao",
+  "Casco e reforma": "manutencao",
+  "Materiais e ferramentas": "manutencao",
+  "Elétrica e eletrônica": "melhoria",
+  "Equipamentos de bordo": "melhoria",
+};
+
+/**
+ * Sugere o tipo do gasto. É só uma sugestão (o usuário sempre pode mudar). Custos fixos de marina
+ * seguem a categoria; no resto, palavras da descrição têm prioridade sobre o padrão da categoria.
+ */
+export function suggestNature(description: string, categoryName?: string | null): Nature {
+  const cat = categoryName ? CATEGORY_NATURE[categoryName] : undefined;
+  if (cat === "marina") return "marina";
+  const text = norm(description);
+  for (const [nature, pattern] of NATURE_RULES) if (pattern.test(text)) return nature;
+  return cat ?? "outro";
+}

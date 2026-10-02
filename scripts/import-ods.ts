@@ -30,6 +30,14 @@ console.log(`${expenses.length} lançamentos (${expenses.filter((e) => e.kind ==
 console.log("Categorias:");
 for (const [k, v] of [...perCat].sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)}  ${k}`);
 
+const perNature = new Map<string, { n: number; cents: number }>();
+for (const e of expenses.filter((x) => x.kind === "despesa")) {
+  const cur = perNature.get(e.nature) ?? { n: 0, cents: 0 };
+  perNature.set(e.nature, { n: cur.n + 1, cents: cur.cents + Math.round(e.amount * 100) });
+}
+console.log("\nTipos de despesa (sugeridos; ajuste no app):");
+for (const [k, v] of perNature) console.log(`  ${String(v.n).padStart(4)}  ${k.padEnd(11)} R$ ${(v.cents / 100).toFixed(2)}`);
+
 // Conferência: recalcula o saldo com as regras do sistema e compara com o da planilha.
 const names = [...new Set([...expenses.map((e) => e.user), ...settlements.flatMap((s) => [s.from, s.to])])].sort();
 const id = (n: string) => names.indexOf(n) + 1;
@@ -51,7 +59,7 @@ if (flag("--listar")) {
   for (const cat of [...perCat.keys()].sort()) {
     console.log(`\n== ${cat}`);
     for (const e of expenses.filter((x) => x.category === cat))
-      console.log(`   ${e.final!.toISOString().slice(0, 10)}  ${e.user.padEnd(8)} ${e.amount.toFixed(2).padStart(9)}  ${e.description}`);
+      console.log(`   ${e.final!.toISOString().slice(0, 10)}  ${e.user.padEnd(8)} ${e.amount.toFixed(2).padStart(9)}  ${e.nature.padEnd(10)} ${e.description}`);
   }
 }
 writeFileSync(out, toSql(result, flag("--substituir")));

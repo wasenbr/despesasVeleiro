@@ -2,6 +2,17 @@
 
 export type Kind = "despesa" | "venda";
 
+/** Natureza do gasto, além da categoria: o que foi gasto (categoria) vs. por que foi gasto (tipo). */
+export const NATURES = [
+  { id: "manutencao", label: "Manutenção", short: "Manutenção" },
+  { id: "melhoria", label: "Melhoria", short: "Melhoria" },
+  { id: "marina", label: "Custos de marina", short: "Marina" },
+  { id: "outro", label: "Outros", short: "Outros" },
+] as const;
+export type Nature = (typeof NATURES)[number]["id"];
+export const isNature = (v: unknown): v is Nature => NATURES.some((n) => n.id === v);
+export const natureLabel = (id: string): string => NATURES.find((n) => n.id === id)?.label ?? id;
+
 export interface User {
   id: number;
   username: string;
@@ -20,6 +31,7 @@ export interface Expense {
   description: string;
   amount_cents: number;
   kind: Kind;
+  nature: Nature;
   user_id: number;
   category_id: number | null;
   created_by: number | null;
@@ -31,6 +43,7 @@ export interface ExpenseInput {
   description: string;
   amount: string | number; // em reais; aceita vírgula
   kind: Kind;
+  nature: Nature;
   user_id: number;
   category_id: number | null;
 }
@@ -79,6 +92,7 @@ export interface MonthRow {
   sales: number;
   by_user: Record<string, number>;
   by_category: Record<string, number>;
+  by_nature: Record<string, number>;
 }
 
 export interface Stats {
@@ -89,6 +103,7 @@ export interface Stats {
   transfers: Transfer[];
   categories: { name: string; total: number; count: number }[];
   category_order: string[];
+  natures: { id: Nature; total: number; count: number }[];
   monthly: MonthRow[];
   cumulative: { date: string; total: number }[];
   balance_series: { date: string; balances: Record<string, number> }[];

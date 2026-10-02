@@ -88,6 +88,20 @@ describe("lançamentos", () => {
     expect(await bad({})).toBe(201);
   });
 
+  it("grava o tipo da despesa, valida e exporta", async () => {
+    const c = newClient();
+    const { cleiton } = await setupTwoUsers(c);
+    const r = await c.call("POST", "/api/expenses", { ...base, user_id: cleiton, nature: "melhoria" });
+    expect(r.data.nature).toBe("melhoria");
+    expect((await c.call("POST", "/api/expenses", { ...base, user_id: cleiton })).data.nature).toBe("outro"); // padrão
+    expect((await c.call("POST", "/api/expenses", { ...base, user_id: cleiton, nature: "luxo" })).status).toBe(400);
+    expect((await c.call("PUT", `/api/expenses/${r.data.id}`, { ...base, user_id: cleiton, nature: "manutencao" })).status).toBe(200);
+    expect((await c.call("GET", "/api/expenses")).data.map((e: any) => e.nature).sort()).toEqual(["manutencao", "outro"]);
+    const stats = (await c.call("GET", "/api/stats")).data;
+    expect(stats.natures.find((n: any) => n.id === "manutencao").total).toBe(29050);
+    expect((await c.call("GET", "/api/export/lancamentos.csv")).data).toContain("Manutenção");
+  });
+
   it("vendas entram no saldo como dinheiro recebido", async () => {
     const c = newClient();
     const { cleiton, eduardo } = await setupTwoUsers(c);

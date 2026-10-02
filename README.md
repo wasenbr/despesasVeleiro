@@ -7,6 +7,7 @@ Foi construído a partir da planilha `Veleiro Macanudo - despesas.ods`, com as m
 ## O que ele faz
 
 - **Lançamento rápido** no celular: valor, descrição, quem pagou, categoria e data. A descrição sugere categoria e valor a partir dos lançamentos anteriores ("Marinheiro" já vem com R$ 200).
+- **Categoria e tipo**: toda despesa tem uma *categoria* (onde foi gasto: Marina, Velas, Elétrica…) e um *tipo* (por que foi gasto): **Manutenção**, **Melhoria**, **Custos de marina** (vaga, marinheiro, clube) ou **Outros**. O tipo aparece como etiqueta colorida em cada lançamento, tem filtro na lista e gráfico próprio. O sistema sugere categoria e tipo pela descrição e pelos lançamentos anteriores, e você pode trocar na hora.
 - **Vendas e entradas**: venda de uma peça ou qualquer dinheiro recebido abate do total de despesas. Quem recebeu o dinheiro fica com a parte do sócio a acertar.
 - **Saldo** entre os sócios e **acertos** (transferências entre eles), como na planilha.
 - **Gráficos**: despesas por mês (por pessoa ou categoria), para onde vai o dinheiro, gasto acumulado, evolução do saldo e maiores despesas, com filtro de período. Os dados principais também estão disponíveis em tabela.
@@ -48,7 +49,7 @@ O importador:
 - lê as 3 abas (09-10/2022, 11/2022-03/2023 e Atual) e descarta as linhas "Ajuste saldo", que só carregavam o saldo de uma aba para a outra;
 - recalcula o saldo com as regras do sistema e compara com o da planilha (Cleiton +742,91 — confere);
 - corrige datas claramente erradas (ex.: `2024-12-20` entre lançamentos de dez/2023 e jan/2024 vira `2023-12-20`) e usa a data da linha anterior quando falta; **cada correção é listada**, confira antes de executar o SQL;
-- classifica cada lançamento em uma categoria (`--listar` mostra o resultado por categoria; ajuste depois no app, se quiser);
+- classifica cada lançamento em uma categoria e em um tipo (manutenção, melhoria, custos de marina ou outros). São sugestões automáticas: `--listar` mostra o resultado e você ajusta no app o que quiser;
 - avisa o que ignorou (ex.: a bateria com valor "DEFINIR").
 
 Use `--substituir` para apagar os lançamentos existentes antes de importar de novo, e `--apenas-atual` para importar só a aba "Atual".
@@ -76,7 +77,7 @@ Variáveis: `PORT`, `HOST` (use `0.0.0.0` para aceitar acessos da rede), `DESPES
 ## Desenvolvimento
 
 ```bash
-npm test             # regras de saldo, API, importador (39 testes)
+npm test             # regras de saldo, API, importador (55 testes)
 npm run typecheck    # TypeScript do servidor, do navegador e do service worker
 npm run build        # gera dist/public (app.js, sw.js, css, ícones)
 npm run cf:dev       # roda o Worker com D1 local (precisa de wrangler.toml com um database_id)

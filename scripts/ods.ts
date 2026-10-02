@@ -2,7 +2,8 @@
 import { readFileSync } from "node:fs";
 import { unzipSync, strFromU8 } from "fflate";
 import { XMLParser } from "fast-xml-parser";
-import { categorize, norm } from "../src/shared/categorize";
+import { categorize, norm, suggestNature } from "../src/shared/categorize";
+import type { Nature } from "../src/shared/types";
 
 export type Cell = number | string | Date | null;
 type XNode = Record<string, any>;
@@ -159,6 +160,7 @@ export interface ImportedExpense extends Item {
   kind: "despesa" | "venda";
   user: string;
   category: string;
+  nature: Nature;
 }
 export interface ImportedSettlement extends Item {
   from: string;
@@ -226,9 +228,10 @@ export function extract(sheets: Record<string, Cell[][]>, onlyCurrent = false): 
         if (/^desconto vendas/i.test(label)) description = "Venda Navman e Buja";
         if (/^ajuste saldo/i.test(label)) description = "Ajuste de saldo (saldo anterior)";
         const kind = v < 0 ? "venda" : "despesa";
+        const category = description.startsWith("Ajuste de saldo") ? "Outros" : categorize(description, kind);
         items.push({
-          row: rowNo, date: row[1]!, description, amount: Math.abs(v), kind, user: person,
-          category: description.startsWith("Ajuste de saldo") ? "Outros" : categorize(description, kind),
+          row: rowNo, date: row[1]!, description, amount: Math.abs(v), kind, user: person, category,
+          nature: kind === "venda" ? "outro" : suggestNature(description, category),
         });
       }
     }
@@ -261,7 +264,7 @@ export function toSql(r: ImportResult, replace: boolean): string {
   if (replace) lines.push("DELETE FROM expenses;", "DELETE FROM settlements;");
   for (const e of [...r.expenses].sort((a, b) => dayNum(a.final!) - dayNum(b.final!))) {
     lines.push(
-      `INSERT INTO expenses(date, description, amount_cents, kind, user_id, category_id) VALUES (${q(iso(e.final!))}, ${q(e.description)}, ${cents(e.amount)}, ${q(e.kind)}, ${user(e.user)}, (SELECT id FROM categories WHERE name = ${q(e.category)}));`,
+      `INSERT INTO expenses(date, description, amount_cents, kind, nature, user_id, category_id) VALUES (${q(iso(e.final!))}, ${q(e.description)}, ${cents(e.amount)}, ${q(e.kind)}, ${q(e.nature)}, ${user(e.user)}, (SELECT id FROM categories WHERE name = ${q(e.category)}));`,
     );
   }
   for (const s of [...r.settlements].sort((a, b) => dayNum(a.final!) - dayNum(b.final!))) {

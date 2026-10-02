@@ -5,8 +5,8 @@ import type { Category, Expense, Settlement } from "../src/shared/types";
 const C = 1;
 const E = 2;
 let seq = 0;
-const exp = (date: string, cents: number, user: number, kind: Expense["kind"] = "despesa", cat: number | null = 1): Expense => ({
-  id: ++seq, date, description: "x", amount_cents: cents, kind, user_id: user, category_id: cat, created_by: user, created_at: "",
+const exp = (date: string, cents: number, user: number, kind: Expense["kind"] = "despesa", cat: number | null = 1, nature: Expense["nature"] = "outro"): Expense => ({
+  id: ++seq, date, description: "x", amount_cents: cents, kind, nature, user_id: user, category_id: cat, created_by: user, created_at: "",
 });
 const set = (date: string, from: number, to: number, cents: number): Settlement => ({
   id: ++seq, date, from_user: from, to_user: to, amount_cents: cents, note: "",
@@ -61,6 +61,22 @@ describe("estatísticas", () => {
     expect(s.monthly.map((m) => m.month)).toEqual(["2024-01", "2024-02", "2024-03"]);
     expect(s.monthly[2]!.sales).toBe(2000);
     expect(s.cumulative.at(-1)!.total).toBe(13000);
+  });
+
+  it("totaliza por tipo de despesa (ignora vendas) e por mês", () => {
+    const s = computeStats(users, cats, [
+      exp("2024-01-10", 10000, C, "despesa", 1, "marina"),
+      exp("2024-01-12", 3000, E, "despesa", 2, "manutencao"),
+      exp("2024-02-01", 7000, E, "despesa", 2, "melhoria"),
+      exp("2024-02-02", 9999, E, "venda", null, "outro"),
+    ], []);
+    const total = (id: string) => s.natures.find((n) => n.id === id)!;
+    expect(total("marina")).toMatchObject({ total: 10000, count: 1 });
+    expect(total("manutencao").total).toBe(3000);
+    expect(total("melhoria").total).toBe(7000);
+    expect(total("outro").total).toBe(0);
+    expect(s.monthly[0]!.by_nature).toEqual({ marina: 10000, manutencao: 3000 });
+    expect(s.monthly[1]!.by_nature).toEqual({ melhoria: 7000 });
   });
 
   it("filtra por período mas mantém o saldo geral", () => {

@@ -6,7 +6,7 @@
  *   saldo = (despesas que pagou - vendas que recebeu) - parte justa + acertos enviados - acertos recebidos
  *   parte justa = (total de despesas - total de vendas) / nº de usuários
  */
-import type { Balance, Category, Expense, MonthRow, Settlement, Stats, Transfer, User } from "../shared/types";
+import { NATURES, type Balance, type Category, type Expense, type MonthRow, type Settlement, type Stats, type Transfer, type User } from "../shared/types";
 
 export const signed = (e: Pick<Expense, "amount_cents" | "kind">): number =>
   e.kind === "despesa" ? e.amount_cents : -e.amount_cents;
@@ -124,6 +124,10 @@ export function computeStats(
     cur.count++;
     byCat.set(nameOf(e), cur);
   }
+  const natures = NATURES.map((n) => {
+    const list = period.filter((e) => e.kind === "despesa" && e.nature === n.id);
+    return { id: n.id, total: list.reduce((a, e) => a + e.amount_cents, 0), count: list.length };
+  });
   const categoriesOut = [...byCat].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const topNames = categoriesOut.slice(0, topCategories).map((c) => c.name);
 
@@ -132,7 +136,7 @@ export function computeStats(
   if (period.length) {
     const rows = new Map<string, MonthRow>();
     for (const m of monthRange(period[0]!.date.slice(0, 7), period[period.length - 1]!.date.slice(0, 7))) {
-      const row: MonthRow = { month: m, expenses: 0, sales: 0, by_user: {}, by_category: {} };
+      const row: MonthRow = { month: m, expenses: 0, sales: 0, by_user: {}, by_category: {}, by_nature: {} };
       rows.set(m, row);
       monthly.push(row);
     }
@@ -146,6 +150,7 @@ export function computeStats(
       row.by_user[e.user_id] = (row.by_user[e.user_id] ?? 0) + e.amount_cents;
       const name = topNames.includes(nameOf(e)) ? nameOf(e) : "Demais";
       row.by_category[name] = (row.by_category[name] ?? 0) + e.amount_cents;
+      row.by_nature[e.nature] = (row.by_nature[e.nature] ?? 0) + e.amount_cents;
     }
   }
 
@@ -211,6 +216,7 @@ export function computeStats(
     balances: bal,
     transfers: transfers(bal),
     categories: categoriesOut,
+    natures,
     category_order: categoriesOut.length > topCategories ? [...topNames, "Demais"] : topNames,
     monthly,
     cumulative,

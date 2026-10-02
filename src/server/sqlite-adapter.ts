@@ -13,8 +13,26 @@ export function openSqlite(path: string, migrationsDir?: string): Db {
   sqlite.exec("PRAGMA foreign_keys = ON");
   if (path !== ":memory:") sqlite.exec("PRAGMA journal_mode = WAL");
   if (migrationsDir) {
-    for (const f of readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort()) {
-      sqlite.exec(readFileSync(join(migrationsDir, f), "utf8")); // as migrações usam IF NOT EXISTS
+    // Mesmo controle do D1 (`wrangler d1 migrations`): cada arquivo roda uma única vez.
+    sqlite.exec("CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY)");
+    const done = new Set((sqlite.prepare("SELECT name FROM _migrations").all() as { name: string }[]).map((r) => r.name));
+    const files = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort();
+    // Bancos criados antes do controle de migrações já têm a primeira aplicada.
+    if (!done.size && sqlite.prepare("SELECT 1 FROM sqlite_master WHERE name='users'").get()) {
+      sqlite.prepare("INSERT INTO _migrations VALUES (?)").run(files[0]!);
+      done.add(files[0]!);
+    }
+    for (const f of files) {
+      if (done.has(f)) continue;
+      sqlite.exec("BEGIN");
+      try {
+        sqlite.exec(readFileSync(join(migrationsDir, f), "utf8"));
+        sqlite.prepare("INSERT INTO _migrations VALUES (?)").run(f);
+        sqlite.exec("COMMIT");
+      } catch (e) {
+        sqlite.exec("ROLLBACK");
+        throw e;
+      }
     }
   }
 
