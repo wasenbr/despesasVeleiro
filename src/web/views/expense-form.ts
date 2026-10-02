@@ -1,6 +1,6 @@
 import { SALES_CATEGORY, categorize, suggestNature } from "../../shared/categorize";
-import { NATURES, type ExpenseInput, type Kind, type Nature } from "../../shared/types";
-import { ApiError } from "../api";
+import { NATURES, type ClassifyResult, type ExpenseInput, type Kind, type Nature } from "../../shared/types";
+import { ApiError, api } from "../api";
 import { Safe, html, must } from "../dom";
 import { moneyInput, normText, todayISO } from "../format";
 import { state, userSlot } from "../state";
@@ -71,6 +71,7 @@ export function expenseFormHtml(id: string, v: FormValues, submitLabel: string):
           <input type="date" name="date" value="${v.date}" max="2100-12-31" />
         </label>
       </div>
+      <p class="ai-hint" data-ai-hint role="status" hidden></p>
       <p class="form-error" role="alert" hidden></p>
       <button class="btn primary" type="submit">${submitLabel}</button>
     </form>`;
@@ -84,6 +85,9 @@ function lastWithDescription(desc: string) {
   const key = normText(desc);
   return key ? state.expenses.find((e) => normText(e.description) === key) : undefined; // lista já vem do mais novo para o mais antigo
 }
+
+/** Respostas da IA já recebidas nesta sessão (a mesma descrição não é consultada de novo). */
+const aiCache = new Map<string, ClassifyResult>();
 
 const natureOf = (form: HTMLFormElement): Nature =>
   (form.querySelector<HTMLInputElement>('input[name="nature"]:checked')?.value as Nature) ?? "outro";
@@ -115,6 +119,42 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     setNature(known && known.kind === "despesa" ? known.nature : text ? suggestNature(text, catLabel) : "outro");
   };
 
+  // ---- IA: só para descrições novas (as já usadas são resolvidas na hora, sem custo) ----
+  const hint = must<HTMLElement>("[data-ai-hint]", form);
+  const setHint = (msg: string) => {
+    hint.textContent = msg;
+    hint.hidden = !msg;
+  };
+  let aiTimer: number | undefined;
+  let aiSeq = 0;
+  const askAi = (immediate: boolean) => {
+    clearTimeout(aiTimer);
+    const text = description.value.trim();
+    const eligible = state.ai.enabled && !editing && kindOf(form) === "despesa" && text.length >= 3 && !lastWithDescription(text) && !(touched && natureTouched);
+    if (!eligible) {
+      aiSeq++;
+      setHint("");
+      return;
+    }
+    const run = async () => {
+      const seq = ++aiSeq;
+      const key = normText(text);
+      let result = aiCache.get(key);
+      if (!result) {
+        setHint("✨ Classificando com IA…");
+        result = await api<ClassifyResult>("POST", "/api/classify", { description: text }).catch(() => undefined);
+        if (result && result.source !== "none") aiCache.set(key, result);
+      }
+      if (seq !== aiSeq) return; // o usuário continuou digitando ou já lançou
+      if (!result || result.source === "none") return setHint("");
+      if (!touched && result.category_id !== null) category.value = String(result.category_id);
+      if (!natureTouched && result.nature) setNature(result.nature);
+      setHint("✨ Categoria e tipo sugeridos pela IA");
+    };
+    if (immediate) void run();
+    else aiTimer = window.setTimeout(run, 700);
+  };
+
   const suggestCategory = () => {
     if (!touched) {
       if (kindOf(form) === "venda") category.value = String(catId(SALES_CATEGORY) ?? "");
@@ -129,12 +169,22 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
 
   category.addEventListener("change", () => {
     touched = true;
+    setHint("");
     suggestNatureNow();
   });
-  form.querySelectorAll<HTMLInputElement>('input[name="nature"]').forEach((r) => r.addEventListener("change", () => (natureTouched = true)));
-  description.addEventListener("input", suggestCategory);
+  form.querySelectorAll<HTMLInputElement>('input[name="nature"]').forEach((r) =>
+    r.addEventListener("change", () => {
+      natureTouched = true;
+      setHint("");
+    }),
+  );
+  description.addEventListener("input", () => {
+    suggestCategory();
+    askAi(false);
+  });
   description.addEventListener("change", () => {
     suggestCategory();
+    askAi(true);
     const known = lastWithDescription(description.value);
     if (known && !amount.value.trim() && known.kind === kindOf(form)) amount.value = (known.amount_cents / 100).toFixed(2).replace(".", ",");
   });
@@ -147,6 +197,7 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
         category.value = "";
       }
       suggestCategory();
+      askAi(true);
     }),
   );
 
@@ -159,6 +210,7 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     if (!field(form, "date").value) return showError("Informe a data.");
     const button = must<HTMLButtonElement>('button[type="submit"]', form);
     button.disabled = true;
+    aiSeq++; // descarta qualquer resposta da IA que ainda esteja a caminho
     try {
       await onSubmit({
         kind: kindOf(form),
@@ -184,6 +236,8 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     touched = false;
     natureTouched = false;
     setNature("outro");
+    aiSeq++;
+    setHint("");
     showError("");
   });
 }

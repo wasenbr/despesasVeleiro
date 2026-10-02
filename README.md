@@ -8,6 +8,7 @@ Foi construído a partir da planilha `Veleiro Macanudo - despesas.ods`, com as m
 
 - **Lançamento rápido** no celular: valor, descrição, quem pagou, categoria e data. A descrição sugere categoria e valor a partir dos lançamentos anteriores ("Marinheiro" já vem com R$ 200).
 - **Categoria e tipo**: toda despesa tem uma *categoria* (onde foi gasto: Marina, Velas, Elétrica…) e um *tipo* (por que foi gasto): **Manutenção**, **Melhoria**, **Custos de marina** (vaga, marinheiro, clube) ou **Outros**. O tipo aparece como etiqueta colorida em cada lançamento, tem filtro na lista e gráfico próprio. O sistema sugere categoria e tipo pela descrição e pelos lançamentos anteriores, e você pode trocar na hora.
+- **Classificação automática por IA (opcional)**: ao digitar uma descrição nova, o servidor pergunta a um modelo GPT, via OpenRouter, qual é a categoria e o tipo, e já deixa preenchido ("✨ sugerido pela IA"). Você confere e toca em Lançar. Veja [Classificação por IA](#classificação-por-ia-openrouter).
 - **Vendas e entradas**: venda de uma peça ou qualquer dinheiro recebido abate do total de despesas. Quem recebeu o dinheiro fica com a parte do sócio a acertar.
 - **Saldo** entre os sócios e **acertos** (transferências entre eles), como na planilha.
 - **Gráficos**: despesas por mês (por pessoa ou categoria), para onde vai o dinheiro, gasto acumulado, evolução do saldo e maiores despesas, com filtro de período. Os dados principais também estão disponíveis em tabela.
@@ -62,6 +63,29 @@ No **Safari**, abra o endereço, toque em compartilhar → **Adicionar à Tela d
 
 Em **Ajustes → Exportar dados** baixe CSVs dos lançamentos e acertos. Para uma cópia completa do banco: `npx wrangler d1 export veleiro --remote --output=backup.sql`.
 
+## Classificação por IA (OpenRouter)
+
+Opcional. Sem configurar nada, o sistema continua sugerindo categoria e tipo por regras de palavras e pelo histórico.
+
+1. Crie uma conta em [openrouter.ai](https://openrouter.ai), adicione um crédito pequeno (US$ 5 duram muito) e crie uma chave em *Keys*. Dá para definir um limite de gasto na própria chave.
+2. Guarde a chave como **segredo** no servidor (ela nunca vai para o navegador nem para o repositório):
+   ```bash
+   npx wrangler secret put OPENROUTER_API_KEY     # Cloudflare: cole a chave quando pedir
+   ```
+   No modo Node: `OPENROUTER_API_KEY=sk-or-... npm start`. Com `wrangler dev`, coloque `OPENROUTER_API_KEY=...` em um arquivo `.dev.vars` (já ignorado pelo git).
+3. O modelo padrão é `openai/gpt-4o-mini` (barato e rápido). Para trocar, edite `OPENROUTER_MODEL` em `wrangler.toml` por qualquer id de [openrouter.ai/models](https://openrouter.ai/models).
+
+Em **Ajustes → Classificação automática (IA)** o app mostra se está ativa.
+
+Como funciona:
+- Só descrições **novas** consultam a IA. Se a descrição já foi usada, o app repete a categoria e o tipo anteriores na hora, sem custo.
+- O servidor guarda cada resposta em cache (a mesma descrição, mesmo dita pelo outro sócio, não é enviada de novo) e limita a 60 consultas por hora.
+- O modelo recebe a lista de categorias e cerca de 40 exemplos reais dos próprios sócios, para seguir as convenções de vocês. A resposta só é aceita se a categoria existir na lista e o tipo for válido; senão, vale a regra local.
+- Se a IA estiver fora do ar ou sem crédito, nada quebra: o app usa as regras locais.
+- Você sempre pode trocar a categoria e o tipo antes de lançar. Escolhas manuais nunca são sobrescritas.
+- **Privacidade:** só o texto da descrição vai para o OpenRouter e para o provedor do modelo. Valores, datas e nomes não são enviados.
+- **Custo:** cada consulta usa cerca de 1.500 tokens; com o modelo padrão são ~US$ 0,0002, ou seja, perto de 40 descrições novas por centavo de dólar.
+
 ## Rodar no computador (ou em servidor próprio)
 
 Precisa de Node 22.13 ou mais novo. O mesmo código roda com SQLite em arquivo:
@@ -72,12 +96,12 @@ npm run dev                  # http://127.0.0.1:8787, banco em data/despesas.sql
 npm run import -- planilha.ods && npm run db:apply:local -- import.sql
 ```
 
-Variáveis: `PORT`, `HOST` (use `0.0.0.0` para aceitar acessos da rede), `DESPESAS_DB` (caminho do arquivo). Para uso fora de casa, coloque atrás de um proxy com HTTPS (o service worker do app só funciona em HTTPS, e atrás de um proxy defina o cabeçalho `X-Forwarded-Proto`).
+Variáveis: `OPENROUTER_API_KEY` e `OPENROUTER_MODEL` (IA, opcionais), `PORT`, `HOST` (use `0.0.0.0` para aceitar acessos da rede), `DESPESAS_DB` (caminho do arquivo). Para uso fora de casa, coloque atrás de um proxy com HTTPS (o service worker do app só funciona em HTTPS, e atrás de um proxy defina o cabeçalho `X-Forwarded-Proto`).
 
 ## Desenvolvimento
 
 ```bash
-npm test             # regras de saldo, API, importador (55 testes)
+npm test             # regras de saldo, API, importador (66 testes)
 npm run typecheck    # TypeScript do servidor, do navegador e do service worker
 npm run build        # gera dist/public (app.js, sw.js, css, ícones)
 npm run cf:dev       # roda o Worker com D1 local (precisa de wrangler.toml com um database_id)

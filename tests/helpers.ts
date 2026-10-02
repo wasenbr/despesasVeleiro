@@ -2,8 +2,9 @@ import { createApp } from "../src/server/app";
 import { openSqlite } from "../src/server/sqlite-adapter";
 
 /** App novo com banco em memória e um "navegador" que guarda o cookie de sessão. */
-export function newClient() {
-  const app = createApp();
+export function newClient(opts: { apiKey?: string; model?: string; fetch?: typeof fetch } = {}) {
+  const app = createApp({ fetch: opts.fetch });
+  const env = { OPENROUTER_API_KEY: opts.apiKey, OPENROUTER_MODEL: opts.model };
   const db = openSqlite(":memory:", "migrations");
   let cookie = "";
   async function call(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
@@ -19,7 +20,7 @@ export function newClient() {
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       },
-      { DB: db },
+      { DB: db, ...env },
     );
     const set = res.headers.get("set-cookie");
     if (set) cookie = set.startsWith("sid=;") || /Max-Age=0/i.test(set) ? "" : set.split(";")[0]!;

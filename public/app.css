@@ -172,3 +172,5 @@ ol.steps { padding-left: 1.2rem; margin: 6px 0; } ol.steps li { margin: 4px 0; }
 .tag .dot { width: 8px; height: 8px; margin: 0; background: var(--nat); }
 .seg.natures span { padding: 9px 2px; font-size: 0.82rem; }
 .seg.natures input:checked + span { box-shadow: inset 0 0 0 2.5px var(--nat); }
+.ai-hint { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
+code { background: var(--seg); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }

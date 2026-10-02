@@ -70,6 +70,14 @@ export interface Bootstrap {
   me: number;
   users: User[];
   categories: Category[];
+  /** Classificação automática por IA (OpenRouter): ativa quando o servidor tem a chave configurada. */
+  ai: { enabled: boolean; model: string | null };
+}
+
+export interface ClassifyResult {
+  source: "ia" | "cache" | "none";
+  category_id: number | null;
+  nature: Nature | null;
 }
 
 export interface Balance {

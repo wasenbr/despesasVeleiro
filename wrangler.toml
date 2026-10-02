@@ -15,3 +15,9 @@ binding = "DB"
 database_name = "veleiro"
 database_id = "COLE-AQUI-O-ID-DO-BANCO"
 migrations_dir = "migrations"
+
+# Classificação automática por IA (opcional). A chave é segredo e NÃO vai neste arquivo:
+#   npx wrangler secret put OPENROUTER_API_KEY
+# O modelo pode ser trocado por qualquer id do OpenRouter (https://openrouter.ai/models).
+[vars]
+OPENROUTER_MODEL = "openai/gpt-4o-mini"

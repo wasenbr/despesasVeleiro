@@ -3,13 +3,21 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { isNature, natureLabel } from "../shared/types";
-import type { Bootstrap, Category, Expense, Settlement, User } from "../shared/types";
+import type { Bootstrap, Category, ClassifyResult, Expense, Nature, Settlement, User } from "../shared/types";
+import { norm } from "../shared/categorize";
 import { hashPassword, hashToken, newToken, verifyPassword } from "./auth";
 import type { Db } from "./db";
+import { DEFAULT_MODEL, classifyDescription, type Example } from "./classify";
 import { computeStats } from "./ledger";
 
 export interface Env {
   DB: Db;
+  /** Chave do OpenRouter (segredo). Sem ela, a classificação por IA fica desligada. */
+  OPENROUTER_API_KEY?: string;
+  /** Modelo do OpenRouter, ex.: openai/gpt-4o-mini. */
+  OPENROUTER_MODEL?: string;
+  /** Endereço da API (padrão: https://openrouter.ai/api/v1). Útil para testes ou gateways compatíveis. */
+  OPENROUTER_BASE_URL?: string;
 }
 type Vars = { uid: number };
 type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
@@ -19,6 +27,7 @@ const SESSION_DAYS = 90;
 const MAX_ATTEMPTS = 5;
 const LOCK_SECONDS = 300;
 const MIN_PASSWORD = 8;
+const AI_MAX_PER_HOUR = 60; // teto de chamadas à IA (controle de custo)
 
 class ApiError extends Error {
   constructor(
@@ -64,7 +73,7 @@ async function body(c: Ctx): Promise<Record<string, unknown>> {
   return data as Record<string, unknown>;
 }
 
-export function createApp() {
+export function createApp(options: { fetch?: typeof fetch } = {}) {
   const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
   const needUser = async (db: Db, id: unknown): Promise<number> => {
@@ -220,7 +229,12 @@ export function createApp() {
     const categories = (
       await db.prepare("SELECT id, name FROM categories ORDER BY name COLLATE NOCASE").all<Category>()
     ).results;
-    const out: Bootstrap = { me: c.get("uid"), users, categories };
+    const out: Bootstrap = {
+      me: c.get("uid"),
+      users,
+      categories,
+      ai: { enabled: !!c.env.OPENROUTER_API_KEY, model: c.env.OPENROUTER_API_KEY ? (c.env.OPENROUTER_MODEL || DEFAULT_MODEL) : null },
+    };
     return c.json(out);
   });
 
@@ -250,6 +264,58 @@ export function createApp() {
     if (used) throw new ApiError("Há lançamentos nessa categoria. Mude-os de categoria antes de excluir.");
     await c.env.DB.prepare("DELETE FROM categories WHERE id=?").bind(id).run();
     return c.json({ ok: true });
+  });
+
+  // ---------- classificação por IA ----------
+
+  /** Sugere categoria e tipo a partir da descrição. Só a descrição é enviada ao provedor (nada de valores ou nomes). */
+  app.post("/api/classify", async (c) => {
+    const description = text((await body(c)).description, 200, "Descrição");
+    const none: ClassifyResult = { source: "none", category_id: null, nature: null };
+    if (!c.env.OPENROUTER_API_KEY) return c.json(none);
+    const db = c.env.DB;
+    const cats = (await db.prepare("SELECT id, name FROM categories").all<Category>()).results;
+    const idOf = (name: string) => cats.find((x) => x.name === name)?.id ?? null;
+    const key = norm(description);
+
+    const cached = await db
+      .prepare("SELECT category, nature FROM classifications WHERE key=?")
+      .bind(key)
+      .first<{ category: string; nature: Nature }>();
+    if (cached && idOf(cached.category) !== null) {
+      return c.json({ source: "cache", category_id: idOf(cached.category), nature: cached.nature } satisfies ClassifyResult);
+    }
+
+    const since = now() - 3600;
+    const used = (await db.prepare("SELECT COUNT(*) AS n FROM ai_calls WHERE ts>?").bind(since).first<{ n: number }>())?.n ?? 0;
+    if (used >= AI_MAX_PER_HOUR) throw new ApiError("Limite de classificações por IA atingido. Tente mais tarde.", 429);
+    await db.batch([
+      db.prepare("INSERT INTO ai_calls(ts) VALUES (?)").bind(now()),
+      db.prepare("DELETE FROM ai_calls WHERE ts<?").bind(since),
+    ]);
+
+    // Exemplos reais dos sócios, para o modelo seguir as convenções deles.
+    const examples = (
+      await db
+        .prepare(
+          `SELECT e.description, c.name AS category, e.nature FROM expenses e JOIN categories c ON c.id = e.category_id
+           WHERE e.kind = 'despesa' GROUP BY lower(e.description) ORDER BY MAX(e.date) DESC LIMIT 40`,
+        )
+        .all<Example>()
+    ).results;
+
+    const result = await classifyDescription(
+      { apiKey: c.env.OPENROUTER_API_KEY, model: c.env.OPENROUTER_MODEL || DEFAULT_MODEL, baseUrl: c.env.OPENROUTER_BASE_URL, fetchImpl: options.fetch },
+      description,
+      cats.map((x) => x.name),
+      examples,
+    );
+    if (!result) return c.json(none);
+    await db
+      .prepare("INSERT OR REPLACE INTO classifications(key, category, nature, created_at) VALUES (?,?,?,?)")
+      .bind(key, result.category, result.nature, now())
+      .run();
+    return c.json({ source: "ia", category_id: idOf(result.category), nature: result.nature } satisfies ClassifyResult);
   });
 
   // ---------- lançamentos ----------

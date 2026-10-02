@@ -66,6 +66,15 @@ export function renderSettings(root: HTMLElement, onLogout: () => void): void {
       </section>
 
       <section class="card">
+        <h2>Classificação automática (IA)</h2>
+        ${state.ai.enabled
+          ? html`<p>✨ <strong>Ativa</strong> · modelo <code>${state.ai.model}</code></p>
+              <p class="muted small">Ao digitar uma descrição nova, ela é enviada ao OpenRouter para sugerir categoria e tipo. Só o texto da descrição é enviado (nunca valores nem nomes). Descrições já usadas não consultam a IA.</p>`
+          : html`<p><strong>Desativada.</strong> As sugestões usam apenas regras de palavras e o histórico.</p>
+              <p class="muted small">Para ativar, configure a chave do OpenRouter no servidor (veja o README).</p>`}
+      </section>
+
+      <section class="card">
         <h2>Exportar dados (backup)</h2>
         <p class="muted small">Planilhas CSV para abrir no Excel, Numbers ou Google Planilhas.</p>
         <div class="row2">

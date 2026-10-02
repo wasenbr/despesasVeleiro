@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -17,7 +17,7 @@ describe("migrações do modo Node", () => {
     const db = openSqlite(path, "migrations");
     const row = await db.prepare("SELECT description, nature FROM expenses").first<{ description: string; nature: string }>();
     expect(row).toEqual({ description: "Marina", nature: "outro" });
-    expect((await db.prepare("SELECT COUNT(*) AS n FROM _migrations").first<{ n: number }>())!.n).toBe(2);
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM _migrations").first<{ n: number }>())!.n).toBe(readdirSync("migrations").filter((f) => f.endsWith(".sql")).length);
     openSqlite(path, "migrations"); // abrir de novo não reaplica nada
   });
 

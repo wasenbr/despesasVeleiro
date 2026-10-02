@@ -8,6 +8,7 @@ export const state = {
   expenses: [] as Expense[],
   settlements: [] as Settlement[],
   stats: null as Stats | null, // histórico completo (saldos e totais gerais)
+  ai: { enabled: false, model: null as string | null }, // classificação automática por IA
 };
 
 export async function loadAll(): Promise<void> {
@@ -17,7 +18,7 @@ export async function loadAll(): Promise<void> {
     api<Settlement[]>("GET", "/api/settlements"),
     api<Stats>("GET", "/api/stats"),
   ]);
-  Object.assign(state, { me: boot.me, users: boot.users, categories: boot.categories, expenses, settlements, stats });
+  Object.assign(state, { me: boot.me, users: boot.users, categories: boot.categories, ai: boot.ai, expenses, settlements, stats });
 }
 
 export const userName = (id: number): string => state.users.find((u) => u.id === id)?.name ?? "?";
