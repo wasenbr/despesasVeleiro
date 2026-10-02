@@ -1,0 +1,17 @@
+name = "despesas-veleiro"
+main = "src/server/worker.ts"
+compatibility_date = "2025-09-01"
+
+# Interface (PWA) gerada por `npm run build`. O Worker só responde a /api/*.
+[assets]
+directory = "./dist/public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Banco de dados D1 (SQLite gratuito). Crie com `npx wrangler d1 create veleiro`
+# e cole abaixo o database_id que o comando mostrar.
+[[d1_databases]]
+binding = "DB"
+database_name = "veleiro"
+database_id = "COLE-AQUI-O-ID-DO-BANCO"
+migrations_dir = "migrations"
