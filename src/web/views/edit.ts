@@ -5,6 +5,7 @@ import { html, must, toast } from "../dom";
 import { centsToInput, moneyInput, todayISO } from "../format";
 import { state, userName } from "../state";
 import { attachExpenseForm, expenseFormHtml } from "./expense-form";
+import { auditText } from "./rows";
 import { closeSheet, openSheet } from "./sheet";
 
 export function openExpenseEditor(id: number): void {
@@ -15,7 +16,8 @@ export function openExpenseEditor(id: number): void {
     html`${expenseFormHtml("edit-form", {
       kind: e.kind, nature: e.nature, amount: centsToInput(e.amount_cents), description: e.description,
       user_id: e.user_id, category_id: e.category_id, date: e.date,
-    }, "Salvar alterações")}
+    }, "Salvar alterações", "ajuste")}
+      <p class="muted small audit">${auditText(e)}</p>
       <button type="button" class="btn danger" id="delete-expense">Excluir lançamento</button>`,
   );
   attachExpenseForm(
@@ -89,6 +91,7 @@ export function openSettlementEditor(id: number): void {
   const dlg = openSheet(
     "Editar acerto",
     html`${settlementFormHtml("edit-settlement", { from: s.from_user, to: s.to_user, amount: centsToInput(s.amount_cents), date: s.date, note: s.note }, "Salvar alterações")}
+      <p class="muted small audit">${auditText(s)}</p>
       <button type="button" class="btn danger" id="delete-settlement">Excluir acerto</button>`,
   );
   attachSettlementForm(must<HTMLFormElement>("#edit-settlement", dlg), async (body) => {

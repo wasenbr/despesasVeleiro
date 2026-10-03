@@ -1,9 +1,9 @@
 import { SALES_CATEGORY, categorize, suggestNature } from "../../shared/categorize";
-import { NATURES, type ClassifyResult, type ExpenseInput, type Kind, type Nature } from "../../shared/types";
+import { NATURES, natureLabel, type ClassifyResult, type ExpenseInput, type Kind, type Nature } from "../../shared/types";
 import { ApiError, api } from "../api";
 import { Safe, html, must } from "../dom";
-import { moneyInput, normText, todayISO } from "../format";
-import { state, userSlot } from "../state";
+import { fmtDay, moneyInput, normText, todayISO } from "../format";
+import { catName, state, userName, userSlot } from "../state";
 
 export interface FormValues {
   kind: Kind;
@@ -27,58 +27,121 @@ export const blankValues = (): FormValues => ({
 
 const catId = (name: string): number | null => state.categories.find((c) => c.name === name)?.id ?? null;
 
-export function expenseFormHtml(id: string, v: FormValues, submitLabel: string): Safe {
+/**
+ * "despesa" e "venda": lançamento rápido. Só descrição e valor ficam à vista; quem pagou, tipo, data e
+ * categoria (sugeridos automaticamente) ficam em "Detalhes".
+ * "ajuste": edição de um lançamento existente, com todos os campos à vista.
+ */
+export type FormMode = "despesa" | "venda" | "ajuste";
+
+/** Atalhos fixos da tela inicial: os lançamentos mais comuns. */
+const SHORTCUTS = ["Marina", "Marinheiro"];
+
+export function expenseFormHtml(id: string, v: FormValues, submitLabel: string, mode: FormMode): Safe {
+  const quick = mode !== "ajuste";
+  const amountField = html`<label class="field">
+      <span>Valor (R$)</span>
+      <input class="big" name="amount" inputmode="decimal" placeholder="0,00" value="${v.amount}" enterkeyhint="done" />
+    </label>`;
+  const descInput = html`<input name="description" list="desc-list" maxlength="200" aria-label="Descrição"
+      placeholder="${quick ? "Ou digite outra descrição" : "Ex.: Marina, Sikaflex, venda do GPS"}" value="${v.description}" enterkeyhint="next" />`;
+  const whoField = html`<div class="field">
+      <span data-who>${v.kind === "venda" ? "Quem recebeu o dinheiro" : "Quem pagou"}</span>
+      <div class="seg chips" role="radiogroup">
+        ${state.users.map(
+          (u) => html`<label class="slot-${userSlot(u.id)}"><input type="radio" name="user_id" value="${u.id}" ${u.id === v.user_id ? "checked" : ""} /><span>${u.name}</span></label>`,
+        )}
+      </div>
+    </div>`;
+  const natureField = html`<div class="field" data-nature-field ${v.kind === "venda" ? "hidden" : ""}>
+      <span>Tipo da despesa</span>
+      <div class="seg small natures" role="radiogroup" aria-label="Tipo da despesa">
+        ${NATURES.map(
+          (n) => html`<label class="nat-${n.id}"><input type="radio" name="nature" value="${n.id}" ${n.id === v.nature ? "checked" : ""} /><span>${n.short}</span></label>`,
+        )}
+      </div>
+    </div>`;
+  const dateField = html`<label class="field">
+      <span>Data</span>
+      <input type="date" name="date" value="${v.date}" max="2100-12-31" />
+    </label>`;
+  const categoryField = html`<label class="field"><span>Categoria</span>
+      <select name="category_id">
+        <option value="">Sem categoria</option>
+        ${state.categories.map((c) => html`<option value="${c.id}" ${c.id === v.category_id ? "selected" : ""}>${c.name}</option>`)}
+      </select></label>`;
+  const footer = html`<p class="ai-hint" data-ai-hint role="status" hidden></p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn primary" type="submit">${submitLabel}</button>`;
+
+  if (!quick) {
+    return html`
+      <form id="${id}" class="entry" autocomplete="off" novalidate>
+        <div class="seg" role="radiogroup" aria-label="Tipo de lançamento">
+          <label><input type="radio" name="kind" value="despesa" ${v.kind === "despesa" ? "checked" : ""} /><span>Despesa</span></label>
+          <label><input type="radio" name="kind" value="venda" ${v.kind === "venda" ? "checked" : ""} /><span>Venda / entrada</span></label>
+        </div>
+        ${amountField}
+        <label class="field"><span>Descrição</span>${descInput}</label>
+        ${whoField}${natureField}
+        <div class="row2 cat-date">${categoryField}${dateField}</div>
+        ${footer}
+      </form>`;
+  }
   return html`
     <form id="${id}" class="entry" autocomplete="off" novalidate>
-      <div class="seg" role="radiogroup" aria-label="Tipo de lançamento">
-        <label><input type="radio" name="kind" value="despesa" ${v.kind === "despesa" ? "checked" : ""} /><span>Despesa</span></label>
-        <label><input type="radio" name="kind" value="venda" ${v.kind === "venda" ? "checked" : ""} /><span>Venda / entrada</span></label>
-      </div>
-      <label class="field">
-        <span>Valor (R$)</span>
-        <input class="big" name="amount" inputmode="decimal" placeholder="0,00" value="${v.amount}" enterkeyhint="next" />
-      </label>
-      <label class="field">
-        <span>Descrição</span>
-        <input name="description" list="desc-list" maxlength="200" placeholder="Ex.: Marina, Sikaflex, venda do GPS" value="${v.description}" enterkeyhint="done" />
-      </label>
+      <input type="hidden" name="kind" value="${mode}" />
       <div class="field">
-        <span data-who>${v.kind === "venda" ? "Quem recebeu o dinheiro" : "Quem pagou"}</span>
-        <div class="seg chips" role="radiogroup">
-          ${state.users.map(
-            (u) => html`<label class="slot-${userSlot(u.id)}"><input type="radio" name="user_id" value="${u.id}" ${u.id === v.user_id ? "checked" : ""} /><span>${u.name}</span></label>`,
-          )}
-        </div>
+        <span>Descrição</span>
+        ${mode === "despesa" ? quickDescriptions() : ""}
+        ${descInput}
       </div>
-      <div class="field" data-nature-field ${v.kind === "venda" ? "hidden" : ""}>
-        <span>Tipo da despesa</span>
-        <div class="seg small natures" role="radiogroup" aria-label="Tipo da despesa">
-          ${NATURES.map(
-            (n) => html`<label class="nat-${n.id}"><input type="radio" name="nature" value="${n.id}" ${n.id === v.nature ? "checked" : ""} /><span>${n.short}</span></label>`,
-          )}
-        </div>
-      </div>
-      <div class="row2 cat-date">
-        <label class="field">
-          <span>Categoria</span>
-          <select name="category_id">
-            <option value="">Sem categoria</option>
-            ${state.categories.map((c) => html`<option value="${c.id}" ${c.id === v.category_id ? "selected" : ""}>${c.name}</option>`)}
-          </select>
-        </label>
-        <label class="field">
-          <span>Data</span>
-          <input type="date" name="date" value="${v.date}" max="2100-12-31" />
-        </label>
-      </div>
-      <p class="ai-hint" data-ai-hint role="status" hidden></p>
-      <p class="form-error" role="alert" hidden></p>
-      <button class="btn primary" type="submit">${submitLabel}</button>
+      ${amountField}
+      <details class="more" data-more>
+        <summary>Detalhes <span class="muted" data-more-summary></span></summary>
+        <div class="entry">${whoField}${natureField}${dateField}${categoryField}</div>
+      </details>
+      ${footer}
     </form>`;
 }
 
+/** Descrição mais recente usada na categoria (ex.: "Marina" pode estar lançada como "Mensalidade marina"). */
+function shortcutDescription(categoryName: string): string {
+  const id = catId(categoryName);
+  return (id !== null && state.expenses.find((e) => e.kind === "despesa" && e.category_id === id)?.description.trim()) || categoryName;
+}
+
+/** Descrições de despesa mais usadas (grafia do lançamento mais recente), fora as dos atalhos. */
+function topDescriptions(n: number): string[] {
+  const skip = new Set(SHORTCUTS.map(catId).filter((x) => x !== null));
+  const count = new Map<string, { text: string; n: number }>();
+  for (const e of state.expenses) {
+    if (e.kind !== "despesa" || (e.category_id !== null && skip.has(e.category_id))) continue;
+    const key = normText(e.description);
+    const item = count.get(key);
+    if (item) item.n++;
+    else count.set(key, { text: e.description.trim(), n: 1 }); // lista vem do mais novo para o mais antigo
+  }
+  return [...count.values()].sort((a, b) => b.n - a.n).slice(0, n).map((d) => d.text);
+}
+
+/** Atalhos (Marina, Marinheiro) e uma lista com os demais lançamentos comuns; o campo aceita texto livre. */
+function quickDescriptions(): Safe {
+  const top = topDescriptions(20);
+  return html`<div class="quick-desc">
+    ${SHORTCUTS.map((name) => html`<button type="button" class="chip" data-desc="${shortcutDescription(name)}">${name}</button>`)}
+    ${top.length
+      ? html`<select class="chip" data-desc-pick aria-label="Outros lançamentos comuns">
+          <option value="">Outros…</option>
+          ${top.map((d) => html`<option value="${d}">${d}</option>`)}
+        </select>`
+      : ""}
+  </div>`;
+}
+
 const field = (form: HTMLFormElement, name: string) => form.elements.namedItem(name) as HTMLInputElement;
-const kindOf = (form: HTMLFormElement): Kind => (form.querySelector<HTMLInputElement>('input[name="kind"]:checked')?.value as Kind) ?? "despesa";
+// No modo rápido "kind" é um campo oculto; na edição, um grupo de rádios. Os dois expõem .value.
+const kindOf = (form: HTMLFormElement): Kind => ((form.elements.namedItem("kind") as RadioNodeList | HTMLInputElement).value as Kind) || "despesa";
 
 /** Última despesa com a mesma descrição (para sugerir categoria e valor de lançamentos recorrentes). */
 function lastWithDescription(desc: string) {
@@ -95,6 +158,7 @@ const natureOf = (form: HTMLFormElement): Nature =>
 export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: ExpenseInput) => Promise<void>, editing = false): void {
   let touched = editing; // categoria escolhida pelo usuário: não sobrescrever com sugestões
   let natureTouched = editing;
+  let amountAuto = false; // valor preenchido pela sugestão (pode ser trocado por outra sugestão)
   const category = form.elements.namedItem("category_id") as HTMLSelectElement;
   const description = field(form, "description");
   const amount = field(form, "amount");
@@ -127,8 +191,11 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
   };
   let aiTimer: number | undefined;
   let aiSeq = 0;
+  let aiRun: (() => void) | undefined; // consulta agendada e ainda não iniciada
+  let aiPending: Promise<void> | undefined;
   const askAi = (immediate: boolean) => {
     clearTimeout(aiTimer);
+    aiRun = undefined;
     const text = description.value.trim();
     const eligible = state.ai.enabled && !editing && kindOf(form) === "despesa" && text.length >= 3 && !lastWithDescription(text) && !(touched && natureTouched);
     if (!eligible) {
@@ -150,9 +217,34 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
       if (!touched && result.category_id !== null) category.value = String(result.category_id);
       if (!natureTouched && result.nature) setNature(result.nature);
       setHint("✨ Categoria e tipo sugeridos pela IA");
+      updateSummary();
     };
-    if (immediate) void run();
-    else aiTimer = window.setTimeout(run, 700);
+    const start = () => {
+      aiRun = undefined;
+      aiPending = run().finally(() => (aiPending = undefined));
+    };
+    if (immediate) start();
+    else {
+      aiRun = start;
+      aiTimer = window.setTimeout(start, 700);
+    }
+  };
+  /** Antes de lançar, termina a consulta à IA em andamento (no lançamento rápido a categoria não está à vista). */
+  const settleAi = async () => {
+    clearTimeout(aiTimer);
+    aiRun?.();
+    await aiPending;
+  };
+  /** Resumo do que está em "Detalhes" (lançamento rápido), para conferir sem abrir. */
+  const more = form.querySelector<HTMLDetailsElement>("[data-more]");
+  const moreSummary = form.querySelector<HTMLElement>("[data-more-summary]");
+  const updateSummary = () => {
+    if (!moreSummary) return;
+    const date = field(form, "date").value;
+    const who = Number(form.querySelector<HTMLInputElement>('input[name="user_id"]:checked')?.value);
+    const parts = [date === todayISO() ? "hoje" : date ? fmtDay(date) : "sem data", userName(who)];
+    if (kindOf(form) === "despesa") parts.push(catName(category.value ? Number(category.value) : null), natureLabel(natureOf(form)));
+    moreSummary.textContent = `· ${parts.join(" · ")}`;
   };
 
   const suggestCategory = () => {
@@ -185,8 +277,32 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
   description.addEventListener("change", () => {
     suggestCategory();
     askAi(true);
+    // Sugere o último valor usado; troca também um valor que já tinha sido sugerido (não o digitado).
     const known = lastWithDescription(description.value);
-    if (known && !amount.value.trim() && known.kind === kindOf(form)) amount.value = (known.amount_cents / 100).toFixed(2).replace(".", ",");
+    if ((amountAuto || !amount.value.trim()) && known?.kind === kindOf(form)) {
+      amount.value = (known.amount_cents / 100).toFixed(2).replace(".", ",");
+      amountAuto = true;
+    } else if (amountAuto) {
+      amount.value = "";
+      amountAuto = false;
+    }
+  });
+  amount.addEventListener("input", () => (amountAuto = false));
+  form.querySelectorAll<HTMLButtonElement>("[data-desc]").forEach((b) =>
+    b.addEventListener("click", () => {
+      description.value = b.dataset.desc ?? "";
+      description.dispatchEvent(new Event("change", { bubbles: true })); // sugere categoria, tipo e o último valor usado
+      amount.focus();
+      amount.select();
+    }),
+  );
+  form.querySelector<HTMLSelectElement>("[data-desc-pick]")?.addEventListener("change", (ev) => {
+    const pick = ev.target as HTMLSelectElement;
+    if (!pick.value) return;
+    description.value = pick.value;
+    pick.value = "";
+    description.dispatchEvent(new Event("change", { bubbles: true }));
+    amount.focus();
   });
   form.querySelectorAll<HTMLInputElement>('input[name="kind"]').forEach((r) =>
     r.addEventListener("change", () => {
@@ -210,8 +326,9 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     if (!field(form, "date").value) return showError("Informe a data.");
     const button = must<HTMLButtonElement>('button[type="submit"]', form);
     button.disabled = true;
-    aiSeq++; // descarta qualquer resposta da IA que ainda esteja a caminho
     try {
+      if (!editing) await settleAi(); // a categoria pode estar escondida em "Detalhes"
+      aiSeq++; // descarta qualquer resposta da IA que ainda esteja a caminho
       await onSubmit({
         kind: kindOf(form),
         nature: kindOf(form) === "venda" ? "outro" : natureOf(form),
@@ -228,9 +345,12 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     }
   });
 
-  // Permite limpar o formulário depois de lançar, mantendo pessoa, tipo e data.
+  // Limpa o formulário depois de lançar, mantendo a data; quem pagou volta a ser o usuário logado.
   form.addEventListener("reset-entry", () => {
+    const me = form.querySelector<HTMLInputElement>(`input[name="user_id"][value="${state.me}"]`);
+    if (me) me.checked = true;
     amount.value = "";
+    amountAuto = false;
     description.value = "";
     category.value = "";
     touched = false;
@@ -239,5 +359,11 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     aiSeq++;
     setHint("");
     showError("");
+    if (more) more.open = false;
+    updateSummary();
   });
+
+  form.addEventListener("input", updateSummary);
+  form.addEventListener("change", updateSummary);
+  updateSummary();
 }

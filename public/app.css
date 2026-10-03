@@ -16,10 +16,12 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
+/* Tamanho de fonte do sistema: tudo em rem, a partir do padrão do navegador/SO (no iPhone, o "Tamanho do Texto"). */
 html { -webkit-text-size-adjust: 100%; }
+@supports (font: -apple-system-body) { html { font: -apple-system-body; } }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
-  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 1rem; line-height: 1.4;
   touch-action: manipulation; overscroll-behavior-y: none;
 }
 h1, h2, h3 { margin: 0; line-height: 1.2; }
@@ -66,17 +68,17 @@ ul.cats li { border-bottom: 1px solid var(--grid); align-items: center; }
 .field > span { font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 input, select, button { font: inherit; }
 input:not([type="radio"]), select {
-  width: 100%; min-height: 48px; padding: 10px 12px; font-size: 16px; color: var(--ink); background: var(--bg);
+  width: 100%; min-height: 48px; padding: 10px 12px; font-size: max(16px, 1rem); color: var(--ink); background: var(--bg);
   border: 1.5px solid transparent; border-radius: 12px; appearance: none; -webkit-appearance: none;
 }
 select { background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%); background-position: calc(100% - 18px) 21px, calc(100% - 13px) 21px; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
 input[type="date"] { min-width: 0; }
 input:focus-visible, select:focus-visible { outline: none; border-color: var(--brand); }
-input.big { font-size: 28px; font-weight: 700; min-height: 58px; font-variant-numeric: tabular-nums; }
+input.big { font-size: 1.75rem; font-weight: 700; min-height: 58px; font-variant-numeric: tabular-nums; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .row2.cat-date { grid-template-columns: 1.45fr 1fr; }
 .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.row3 select { padding-left: 8px; font-size: 14px; }
+.row3 select { padding-left: 8px; }
 .form-error { color: var(--danger); font-weight: 600; margin: 0; }
 form.inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; margin-top: 10px; }
 form.inline .form-error { grid-column: 1 / -1; }
@@ -172,5 +174,29 @@ ol.steps { padding-left: 1.2rem; margin: 6px 0; } ol.steps li { margin: 4px 0; }
 .tag .dot { width: 8px; height: 8px; margin: 0; background: var(--nat); }
 .seg.natures span { padding: 9px 2px; font-size: 0.82rem; }
 .seg.natures input:checked + span { box-shadow: inset 0 0 0 2.5px var(--nat); }
+/* Lançamento rápido: atalhos de descrição e "Detalhes" recolhido */
+.quick-desc { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.chip {
+  flex: 0 0 auto; width: auto; min-height: 40px; max-width: 100%; padding: 8px 16px; border: 0; border-radius: 999px;
+  background: var(--seg); color: var(--ink); font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+}
+select.chip { min-height: 40px; padding: 8px 32px 8px 16px; background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; font-size: max(16px, 0.95rem); flex: 1 1 8rem; }
+.chip:focus-visible { outline: 2px solid var(--brand); }
+.chip:active { filter: brightness(0.93); }
+details.more { margin: 0; border-top: 1px solid var(--grid); padding-top: 4px; }
+details.more > summary { font-size: 0.95rem; }
+details.more > summary span { font-weight: 400; font-size: 0.85rem; }
+details.more[open] > summary { margin-bottom: 8px; }
+.card > details.more:first-child { border-top: 0; }
+.audit { margin-top: 12px; }
+.subtabs { margin-bottom: 12px; }
+
+/* Indicadores da tela inicial */
+.kpi.person { text-decoration: none; color: inherit; }
+.kpi.person .dot, .kpi .dot { width: 8px; height: 8px; vertical-align: middle; }
+.kpi.person.owes strong { color: var(--danger); }
+.kpi small { font-size: 0.78rem; }
+.kpis.inner { margin: 4px 0 8px; }
+.kpis.inner .kpi { box-shadow: none; background: var(--bg); }
 .ai-hint { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
 code { background: var(--seg); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }

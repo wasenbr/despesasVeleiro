@@ -136,7 +136,7 @@ export function computeStats(
   if (period.length) {
     const rows = new Map<string, MonthRow>();
     for (const m of monthRange(period[0]!.date.slice(0, 7), period[period.length - 1]!.date.slice(0, 7))) {
-      const row: MonthRow = { month: m, expenses: 0, sales: 0, by_user: {}, by_category: {}, by_nature: {} };
+      const row: MonthRow = { month: m, expenses: 0, sales: 0, by_user: {}, by_category: {}, by_category_all: {}, by_nature: {} };
       rows.set(m, row);
       monthly.push(row);
     }
@@ -150,6 +150,7 @@ export function computeStats(
       row.by_user[e.user_id] = (row.by_user[e.user_id] ?? 0) + e.amount_cents;
       const name = topNames.includes(nameOf(e)) ? nameOf(e) : "Demais";
       row.by_category[name] = (row.by_category[name] ?? 0) + e.amount_cents;
+      row.by_category_all[nameOf(e)] = (row.by_category_all[nameOf(e)] ?? 0) + e.amount_cents;
       row.by_nature[e.nature] = (row.by_nature[e.nature] ?? 0) + e.amount_cents;
     }
   }

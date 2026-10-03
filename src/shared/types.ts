@@ -34,8 +34,10 @@ export interface Expense {
   nature: Nature;
   user_id: number;
   category_id: number | null;
-  created_by: number | null;
+  created_by: number | null; // quem lançou (null: importado da planilha)
   created_at: string;
+  updated_by: number | null; // quem alterou por último
+  updated_at: string | null;
 }
 
 export interface ExpenseInput {
@@ -56,6 +58,10 @@ export interface Settlement {
   to_user: number;
   amount_cents: number;
   note: string;
+  created_by: number | null;
+  created_at: string;
+  updated_by: number | null;
+  updated_at: string | null;
 }
 
 export interface SettlementInput {
@@ -99,7 +105,8 @@ export interface MonthRow {
   expenses: number;
   sales: number;
   by_user: Record<string, number>;
-  by_category: Record<string, number>;
+  by_category: Record<string, number>; // só as maiores categorias; o resto em "Demais"
+  by_category_all: Record<string, number>; // todas as categorias, pelo nome
   by_nature: Record<string, number>;
 }
 

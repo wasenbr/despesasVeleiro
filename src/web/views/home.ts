@@ -1,8 +1,8 @@
 import { api } from "../api";
 import { emitChanged } from "../bus";
 import { html, mount, must, toast } from "../dom";
-import { brl, monthLong, todayISO } from "../format";
-import { state, userName } from "../state";
+import { brl, todayISO } from "../format";
+import { state, userSlot } from "../state";
 import { attachExpenseForm, blankValues, expenseFormHtml } from "./expense-form";
 import { expenseRow } from "./rows";
 
@@ -10,58 +10,52 @@ export function renderHome(root: HTMLElement): void {
   mount(
     root,
     html`
-      <section class="card" id="home-balance"></section>
+      <div class="kpis" id="home-kpis"></div>
       <section class="card">
-        <h2>Novo lançamento</h2>
-        ${expenseFormHtml("quick-form", blankValues(), "Lançar")}
+        <h2>Nova despesa</h2>
+        ${expenseFormHtml("quick-form", blankValues(), "Lançar despesa", "despesa")}
       </section>
       <section class="card" id="home-recent"></section>`,
   );
   const form = must<HTMLFormElement>("#quick-form", root);
   attachExpenseForm(form, async (input) => {
     await api("POST", "/api/expenses", input);
-    toast("Lançado ✓");
+    toast("Despesa lançada ✓");
     form.dispatchEvent(new Event("reset-entry"));
     emitChanged();
   });
   updateHome(root);
 }
 
-/** Atualiza só os cartões de dados, sem refazer o formulário (preserva o que está sendo digitado). */
+/** Atualiza só os indicadores e a lista, sem refazer o formulário (preserva o que está sendo digitado). */
 export function updateHome(root: HTMLElement): void {
   const stats = state.stats;
-  const balance = must("#home-balance", root);
-  const recent = must("#home-recent", root);
   if (!stats) return;
 
-  const month = todayISO().slice(0, 7);
-  const monthTotal = state.expenses
-    .filter((e) => e.date.startsWith(month))
+  // Custo do ano corrente (despesas menos vendas) e média pelos meses já decorridos no ano.
+  const today = todayISO();
+  const year = today.slice(0, 4);
+  const yearTotal = state.expenses
+    .filter((e) => e.date.startsWith(year) && e.date <= today)
     .reduce((sum, e) => sum + (e.kind === "despesa" ? e.amount_cents : -e.amount_cents), 0);
-
-  const headline = stats.transfers.length
-    ? stats.transfers.map((t) => html`<p class="headline"><strong>${userName(t.from)}</strong> deve <strong>${brl(t.amount_cents)}</strong> a <strong>${userName(t.to)}</strong></p>`)
-    : html`<p class="headline">Tudo acertado ✓</p>`;
+  const monthsElapsed = Number(today.slice(5, 7));
 
   mount(
-    balance,
+    must("#home-kpis", root),
     html`
-      <h2>Saldo entre vocês</h2>
-      ${headline}
-      <ul class="people">
-        ${state.users.map((u) => {
-          const b = stats.balances[u.id];
-          return html`<li><span><i class="dot slot-${state.users.indexOf(u)}"></i>${u.name}</span>
-            <span class="muted">pagou ${brl(b?.paid ?? 0)} · parte justa ${brl(b?.share ?? 0)}</span></li>`;
-        })}
-      </ul>
-      <p class="muted small">Em ${monthLong(month)}: <strong>${brl(monthTotal)}</strong> · média mensal geral: ${brl(stats.totals.monthly_avg)}</p>
-      ${stats.transfers.length ? html`<a class="btn" href="#/acertos">Registrar acerto</a>` : ""}`,
+      <div class="kpi"><span>Custo em ${year}</span><strong>${brl(yearTotal)}</strong></div>
+      <div class="kpi"><span>Média mensal em ${year}</span><strong>${brl(Math.round(yearTotal / monthsElapsed))}</strong></div>
+      ${state.users.map((u) => {
+        const b = stats.balances[u.id]?.balance ?? 0;
+        const label = b > 0 ? "a receber" : b < 0 ? "deve" : "em dia";
+        return html`<a class="kpi person slot-${userSlot(u.id)} ${b < 0 ? "owes" : ""}" href="#/acertos" title="Ver acertos">
+          <span><i class="dot" aria-hidden="true"></i>${u.name} · ${label}</span><strong>${brl(Math.abs(b))}</strong></a>`;
+      })}`,
   );
 
-  const last = state.expenses.slice(0, 6);
+  const last = state.expenses.slice(0, 8);
   mount(
-    recent,
+    must("#home-recent", root),
     html`
       <div class="card-head"><h2>Últimos lançamentos</h2><a href="#/lancamentos">Ver todos</a></div>
       ${last.length ? html`<div class="rows">${last.map(expenseRow)}</div>` : html`<p class="muted">Nenhum lançamento ainda.</p>`}`,
