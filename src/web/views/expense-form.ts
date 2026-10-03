@@ -105,10 +105,15 @@ export function expenseFormHtml(id: string, v: FormValues, submitLabel: string, 
     </form>`;
 }
 
+/** Despesa mais recente da categoria (a lista já vem do mais novo para o mais antigo). */
+function lastInCategory(categoryName: string) {
+  const id = catId(categoryName);
+  return id === null ? undefined : state.expenses.find((e) => e.kind === "despesa" && e.category_id === id);
+}
+
 /** Descrição mais recente usada na categoria (ex.: "Marina" pode estar lançada como "Mensalidade marina"). */
 function shortcutDescription(categoryName: string): string {
-  const id = catId(categoryName);
-  return (id !== null && state.expenses.find((e) => e.kind === "despesa" && e.category_id === id)?.description.trim()) || categoryName;
+  return lastInCategory(categoryName)?.description.trim() || categoryName;
 }
 
 /** Descrições de despesa mais usadas (grafia do lançamento mais recente), fora as dos atalhos. */
@@ -129,7 +134,7 @@ function topDescriptions(n: number): string[] {
 function quickDescriptions(): Safe {
   const top = topDescriptions(20);
   return html`<div class="quick-desc">
-    ${SHORTCUTS.map((name) => html`<button type="button" class="chip" data-desc="${shortcutDescription(name)}">${name}</button>`)}
+    ${SHORTCUTS.map((name) => html`<button type="button" class="chip" data-desc="${shortcutDescription(name)}" data-cat="${name}">${name}</button>`)}
     ${top.length
       ? html`<select class="chip" data-desc-pick aria-label="Outros lançamentos comuns">
           <option value="">Outros…</option>
@@ -274,35 +279,39 @@ export function attachExpenseForm(form: HTMLFormElement, onSubmit: (input: Expen
     suggestCategory();
     askAi(false);
   });
+  const setAmountFrom = (e: { amount_cents: number }) => {
+    amount.value = (e.amount_cents / 100).toFixed(2).replace(".", ",");
+    amountAuto = true;
+  };
   description.addEventListener("change", () => {
     suggestCategory();
     askAi(true);
     // Sugere o último valor usado; troca também um valor que já tinha sido sugerido (não o digitado).
     const known = lastWithDescription(description.value);
-    if ((amountAuto || !amount.value.trim()) && known?.kind === kindOf(form)) {
-      amount.value = (known.amount_cents / 100).toFixed(2).replace(".", ",");
-      amountAuto = true;
-    } else if (amountAuto) {
+    if ((amountAuto || !amount.value.trim()) && known?.kind === kindOf(form)) setAmountFrom(known);
+    else if (amountAuto) {
       amount.value = "";
       amountAuto = false;
     }
   });
   amount.addEventListener("input", () => (amountAuto = false));
+  /** Escolha na lista ou num atalho: traz sempre o valor do último lançamento, mesmo que já houvesse um valor digitado. */
+  const pickDescription = (desc: string, last = lastWithDescription(desc)) => {
+    description.value = desc;
+    if (last?.kind === kindOf(form)) setAmountFrom(last);
+    description.dispatchEvent(new Event("change", { bubbles: true })); // sugere categoria e tipo
+    amount.focus();
+    amount.select();
+  };
   form.querySelectorAll<HTMLButtonElement>("[data-desc]").forEach((b) =>
-    b.addEventListener("click", () => {
-      description.value = b.dataset.desc ?? "";
-      description.dispatchEvent(new Event("change", { bubbles: true })); // sugere categoria, tipo e o último valor usado
-      amount.focus();
-      amount.select();
-    }),
+    b.addEventListener("click", () => pickDescription(b.dataset.desc ?? "", lastInCategory(b.dataset.cat ?? "") ?? lastWithDescription(b.dataset.desc ?? ""))),
   );
   form.querySelector<HTMLSelectElement>("[data-desc-pick]")?.addEventListener("change", (ev) => {
     const pick = ev.target as HTMLSelectElement;
     if (!pick.value) return;
-    description.value = pick.value;
+    const desc = pick.value;
     pick.value = "";
-    description.dispatchEvent(new Event("change", { bubbles: true }));
-    amount.focus();
+    pickDescription(desc);
   });
   form.querySelectorAll<HTMLInputElement>('input[name="kind"]').forEach((r) =>
     r.addEventListener("change", () => {
