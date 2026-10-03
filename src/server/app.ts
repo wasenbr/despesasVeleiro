@@ -359,8 +359,8 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
   app.put("/api/expenses/:id", async (c) => {
     const vals = await expenseValues(c);
     const r = await c.env.DB
-      .prepare("UPDATE expenses SET date=?, description=?, amount_cents=?, kind=?, nature=?, user_id=?, category_id=? WHERE id=?")
-      .bind(...vals, Number(c.req.param("id")))
+      .prepare("UPDATE expenses SET date=?, description=?, amount_cents=?, kind=?, nature=?, user_id=?, category_id=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(...vals, c.get("uid"), Number(c.req.param("id")))
       .run();
     if (!r.meta.changes) throw new ApiError("Lançamento não encontrado.", 404);
     return c.json({ ok: true });
@@ -406,8 +406,8 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
   app.put("/api/settlements/:id", async (c) => {
     const vals = await settlementValues(c);
     const r = await c.env.DB
-      .prepare("UPDATE settlements SET date=?, from_user=?, to_user=?, amount_cents=?, note=? WHERE id=?")
-      .bind(...vals, Number(c.req.param("id")))
+      .prepare("UPDATE settlements SET date=?, from_user=?, to_user=?, amount_cents=?, note=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(...vals, c.get("uid"), Number(c.req.param("id")))
       .run();
     if (!r.meta.changes) throw new ApiError("Acerto não encontrado.", 404);
     return c.json({ ok: true });
@@ -446,6 +446,14 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
     const users = new Map(
       (await db.prepare("SELECT id, name FROM users").all<User>()).results.map((u) => [u.id, u.name]),
     );
+    // Auditoria: quem lançou e quem alterou por último (vazio no que veio da planilha).
+    const audit = (r: { created_by: number | null; created_at: string; updated_by: number | null; updated_at: string | null }) => [
+      r.created_by !== null ? (users.get(r.created_by) ?? "") : "importado",
+      r.created_at,
+      r.updated_by !== null ? (users.get(r.updated_by) ?? "") : "",
+      r.updated_at ?? "",
+    ];
+    const auditHead = ["Lançado por", "Lançado em", "Alterado por", "Alterado em"];
     let rows: string[][];
     if (kind === "lancamentos.csv") {
       const r = await db
@@ -454,7 +462,7 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
         )
         .all<Expense & { cat: string | null }>();
       rows = [
-        ["Data", "Descrição", "Tipo", "Valor", "Quem", "Categoria", "Natureza"],
+        ["Data", "Descrição", "Tipo", "Valor", "Quem", "Categoria", "Natureza", ...auditHead],
         ...r.results.map((e) => [
           e.date,
           safe(e.description),
@@ -463,18 +471,20 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
           users.get(e.user_id) ?? "",
           e.cat ?? "",
           e.kind === "despesa" ? natureLabel(e.nature) : "",
+          ...audit(e),
         ]),
       ];
     } else if (kind === "acertos.csv") {
       const r = await db.prepare("SELECT * FROM settlements ORDER BY date, id").all<Settlement>();
       rows = [
-        ["Data", "De", "Para", "Valor", "Observação"],
+        ["Data", "De", "Para", "Valor", "Observação", ...auditHead],
         ...r.results.map((s) => [
           s.date,
           users.get(s.from_user) ?? "",
           users.get(s.to_user) ?? "",
           money(s.amount_cents),
           safe(s.note),
+          ...audit(s),
         ]),
       ];
     } else {

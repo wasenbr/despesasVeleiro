@@ -7,6 +7,9 @@ import { state, userName } from "../state";
 
 Chart.register(BarController, BarElement, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
 
+/** Categorias mostradas separadas (cores fixas: não usam azul/laranja, que identificam as pessoas). */
+const MARINA = [{ name: "Marina", slot: 6 }, { name: "Marinheiro", slot: 2 }];
+
 type PeriodKey = "12m" | "ano" | "tudo" | "custom";
 const view = { period: "12m" as PeriodKey, from: "", to: "", split: "tipo" as "pessoa" | "categoria" | "tipo" };
 let charts: Chart[] = [];
@@ -116,6 +119,9 @@ function draw(root: HTMLElement, s: Stats): void {
   const maxNature = Math.max(...s.natures.map((n) => n.total), 1);
   const catColors = categoryColors(s.category_order);
   const monthLabels = s.monthly.map((m) => monthShort(m.month));
+  // Marina e marinheiro são os custos fixos mais comuns: vistos separados, mês a mês.
+  const fixed = MARINA.map((m) => ({ ...m, total: s.categories.find((c) => c.name === m.name)?.total ?? 0 }));
+  const hasFixed = fixed.some((f) => f.total > 0);
 
   mount(
     body,
@@ -137,6 +143,17 @@ function draw(root: HTMLElement, s: Stats): void {
           )}
         </ul>
       </section>
+
+      ${hasFixed
+        ? html`<section class="card">
+            <h2>Marina e marinheiro</h2>
+            <div class="kpis inner">
+              ${fixed.map((f) => html`<div class="kpi"><span><i class="dot" style="background:${series(f.slot)}" aria-hidden="true"></i>${f.name}</span>
+                <strong>${brl(f.total)}</strong><small class="muted">média ${brl(Math.round(f.total / (s.monthly.length || 1)))}/mês</small></div>`)}
+            </div>
+            <div class="chart"><canvas id="c-marina" role="img" aria-label="Custos de marina e de marinheiro por mês"></canvas></div>
+          </section>`
+        : ""}
 
       <section class="card">
         <div class="card-head"><h2>Despesas por mês</h2>
@@ -213,6 +230,19 @@ function draw(root: HTMLElement, s: Stats): void {
       options: { ...baseOptions(), scales: { ...axes(), x: { ...axes().x, stacked: true }, y: { ...axes().y, stacked: true, beginAtZero: true } }, plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, ...tipMoney } } },
     }),
   );
+
+  if (hasFixed) {
+    charts.push(
+      new Chart(must<HTMLCanvasElement>("#c-marina", body), {
+        type: "bar",
+        data: {
+          labels: monthLabels,
+          datasets: fixed.map((f) => ({ label: f.name, data: s.monthly.map((m) => m.by_category_all[f.name] ?? 0), backgroundColor: series(f.slot), maxBarThickness: 18 })),
+        },
+        options: { ...baseOptions(), scales: { ...axes(), y: { ...axes().y, beginAtZero: true } }, plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, ...tipMoney } } },
+      }),
+    );
+  }
 
   // 2) e 3) Linhas no tempo (eixo x numérico, rótulos formatados).
   const t = (iso: string) => Date.parse(`${iso}T00:00:00Z`);

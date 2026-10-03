@@ -143,6 +143,26 @@ describe("acertos e exportação", () => {
     expect((await c.call("DELETE", `/api/settlements/${r.data.id}`)).status).toBe(200);
   });
 
+  it("registra quem lançou e quem alterou acertos e vendas (auditoria)", async () => {
+    const c = newClient();
+    const { cleiton, eduardo } = await setupTwoUsers(c);
+    const s = { date: "2024-06-01", from_user: eduardo, to_user: cleiton, amount: "500", note: "pix" };
+    const r = await c.call("POST", "/api/settlements", s);
+    let row = (await c.call("GET", "/api/settlements")).data[0];
+    expect(row.created_by).toBe(cleiton);
+    expect(row.updated_by).toBeNull();
+    await c.call("PUT", `/api/settlements/${r.data.id}`, { ...s, amount: "600" });
+    row = (await c.call("GET", "/api/settlements")).data[0];
+    expect(row.updated_by).toBe(cleiton);
+    expect(row.updated_at).toBeTruthy();
+
+    const sale = (await c.call("POST", "/api/expenses", { date: "2024-06-02", description: "GPS", amount: 300, kind: "venda", user_id: eduardo })).data;
+    expect(sale.created_by).toBe(cleiton);
+    const csv = (await c.call("GET", "/api/export/acertos.csv")).data as string;
+    expect(csv).toContain(`"Lançado por"`);
+    expect(csv).toContain(`"Cleiton"`);
+  });
+
   it("exporta CSV neutralizando fórmulas", async () => {
     const c = newClient();
     const { cleiton } = await setupTwoUsers(c);

@@ -6,24 +6,30 @@ import { openExpenseEditor, openSettlementEditor } from "./views/edit";
 import { renderHome, updateHome } from "./views/home";
 import { renderList } from "./views/list";
 import { renderLogin } from "./views/login";
-import { renderSettlements } from "./views/settle";
-import { renderSettings } from "./views/settings";
+import { renderTools, type ToolTab } from "./views/tools";
 
-type Route = "inicio" | "lancamentos" | "graficos" | "acertos" | "ajustes";
+type Route = "inicio" | "lancamentos" | "graficos" | "ferramentas";
 
 const ROUTES: { id: Route; label: string; icon: string }[] = [
   { id: "inicio", label: "Início", icon: '<path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10"/>' },
   { id: "lancamentos", label: "Lançamentos", icon: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>' },
   { id: "graficos", label: "Gráficos", icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
-  { id: "acertos", label: "Acertos", icon: '<path d="M7 7h13l-3-3M17 17H4l3 3"/>' },
-  { id: "ajustes", label: "Ajustes", icon: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>' },
+  { id: "ferramentas", label: "Ferramentas", icon: '<path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L13 5l1.7 1.3ZM3 21l4-4"/>' },
 ];
+/** Endereços antigos (#/acertos, #/ajustes) abrem a sub-aba correspondente de Ferramentas. */
+const LEGACY: Record<string, ToolTab> = { acertos: "acertos", ajustes: "ajustes", vendas: "vendas" };
+let pendingTool: ToolTab | undefined;
 
 const app = must("#app");
 let lastLoad = 0;
 
 const currentRoute = (): Route => {
   const id = location.hash.replace(/^#\/?/, "") as Route;
+  if (LEGACY[id]) {
+    pendingTool = LEGACY[id];
+    history.replaceState(null, "", "#/ferramentas");
+    return "ferramentas";
+  }
   return ROUTES.some((r) => r.id === id) ? id : "inicio";
 };
 
@@ -65,8 +71,7 @@ function renderRoute(scrollTop: boolean): void {
     case "inicio": renderHome(view); break;
     case "lancamentos": renderList(view); break;
     case "graficos": renderCharts(view); break;
-    case "acertos": renderSettlements(view); break;
-    case "ajustes": renderSettings(view, () => void boot()); break;
+    case "ferramentas": renderTools(view, () => void boot(), pendingTool); pendingTool = undefined; break;
   }
   if (scrollTop) window.scrollTo(0, 0);
 }
@@ -75,7 +80,7 @@ async function reload(): Promise<void> {
   await loadAll();
   lastLoad = Date.now();
   if (!document.querySelector("#view")) return;
-  if (currentRoute() === "inicio" && document.querySelector("#home-balance")) {
+  if (currentRoute() === "inicio" && document.querySelector("#home-kpis")) {
     updateHome(must("#view"));
     updateSuggestions();
   } else renderRoute(false);

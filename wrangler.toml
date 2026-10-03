@@ -13,7 +13,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "veleiro"
-database_id = "COLE-AQUI-O-ID-DO-BANCO"
+database_id = "7d020884-660b-42be-8288-507170e31000"
 migrations_dir = "migrations"
 
 # Classificação automática por IA (opcional). A chave é segredo e NÃO vai neste arquivo:

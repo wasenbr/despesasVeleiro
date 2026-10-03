@@ -41,3 +41,10 @@ export function addMonths(iso: string, delta: number): string {
 
 /** Normaliza para comparar descrições (sem acento, minúsculas). */
 export const normText = (s: string): string => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+/** Data e hora gravadas pelo banco ("AAAA-MM-DD HH:MM:SS", UTC) -> "02/10/2026 14:30" no fuso local. */
+export function fmtStamp(ts: string): string {
+  const d = new Date(`${ts.replace(" ", "T")}Z`);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}

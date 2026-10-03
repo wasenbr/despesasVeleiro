@@ -6,10 +6,10 @@ const C = 1;
 const E = 2;
 let seq = 0;
 const exp = (date: string, cents: number, user: number, kind: Expense["kind"] = "despesa", cat: number | null = 1, nature: Expense["nature"] = "outro"): Expense => ({
-  id: ++seq, date, description: "x", amount_cents: cents, kind, nature, user_id: user, category_id: cat, created_by: user, created_at: "",
+  id: ++seq, date, description: "x", amount_cents: cents, kind, nature, user_id: user, category_id: cat, created_by: user, created_at: "", updated_by: null, updated_at: null,
 });
 const set = (date: string, from: number, to: number, cents: number): Settlement => ({
-  id: ++seq, date, from_user: from, to_user: to, amount_cents: cents, note: "",
+  id: ++seq, date, from_user: from, to_user: to, amount_cents: cents, note: "", created_by: from, created_at: "", updated_by: null, updated_at: null,
 });
 
 describe("saldo", () => {
@@ -90,6 +90,7 @@ describe("estatísticas", () => {
     const s = computeStats(users, many, many.map((c, i) => exp("2024-01-01", 1000 * (10 - i), C, "despesa", c.id)), [], null, null, 3);
     expect(s.category_order).toEqual(["C1", "C2", "C3", "Demais"]);
     expect(Object.keys(s.monthly[0]!.by_category).sort()).toEqual(["C1", "C2", "C3", "Demais"]);
+    expect(s.monthly[0]!.by_category_all["C9"]).toBe(2000); // todas as categorias, sem agrupar
   });
 
   it("monthRange cruza anos", () => {
