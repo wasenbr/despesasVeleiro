@@ -50,6 +50,21 @@ describe("autenticação", () => {
     expect(u!.password_hash.startsWith("pbkdf2$")).toBe(true);
     expect(u!.password_hash).not.toContain("senha-forte-1");
   });
+
+  it("renova a sessão a cada uso (não expira para quem continua usando)", async () => {
+    const c = newClient();
+    await setupTwoUsers(c);
+    const now = Math.floor(Date.now() / 1000);
+    // Sessão antiga, a um dia de expirar.
+    await c.db.prepare("UPDATE sessions SET expires_at=?").bind(now + 86400).run();
+    const r = await c.call("GET", "/api/bootstrap");
+    expect(r.status).toBe(200);
+    expect(r.res.headers.get("set-cookie")).toMatch(/Max-Age=34560000/);
+    const s = await c.db.prepare("SELECT MIN(expires_at) AS e FROM sessions").first<{ e: number }>();
+    expect(s!.e).toBeGreaterThan(now + 399 * 86400);
+    // Logo depois, não reescreve de novo.
+    expect((await c.call("GET", "/api/bootstrap")).res.headers.get("set-cookie")).toBeNull();
+  });
 });
 
 describe("lançamentos", () => {

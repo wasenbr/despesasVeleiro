@@ -23,7 +23,9 @@ type Vars = { uid: number };
 type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
 
 const COOKIE = "sid";
-const SESSION_DAYS = 90;
+// Sessão deslizante: cada uso renova o prazo, então quem abre o app de vez em quando não precisa logar de novo.
+// 400 dias é o máximo que os navegadores aceitam no Max-Age do cookie.
+const SESSION_DAYS = 400;
 const MAX_ATTEMPTS = 5;
 const LOCK_SECONDS = 300;
 const MIN_PASSWORD = 8;
@@ -106,18 +108,34 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
     const publicPaths = ["/api/status", "/api/login", "/api/setup"];
     if (!publicPaths.includes(c.req.path)) {
       const token = getCookie(c, COOKIE);
+      const hash = token ? await hashToken(token) : "";
       const row = token
-        ? await c.env.DB.prepare("SELECT user_id FROM sessions WHERE token_hash=? AND expires_at>?")
-            .bind(await hashToken(token), now())
-            .first<{ user_id: number }>()
+        ? await c.env.DB.prepare("SELECT user_id, expires_at FROM sessions WHERE token_hash=? AND expires_at>?")
+            .bind(hash, now())
+            .first<{ user_id: number; expires_at: number }>()
         : null;
       if (!row) throw new ApiError("Faça login.", 401);
       c.set("uid", row.user_id);
+      // Renova no máximo uma vez por dia (evita uma escrita a cada requisição).
+      if (token && row.expires_at < now() + (SESSION_DAYS - 1) * 86400) {
+        await c.env.DB.prepare("UPDATE sessions SET expires_at=? WHERE token_hash=?").bind(now() + SESSION_DAYS * 86400, hash).run();
+        setSessionCookie(c, token);
+      }
     }
     await next();
     c.header("Cache-Control", "no-store");
     c.header("X-Content-Type-Options", "nosniff");
   });
+
+  function setSessionCookie(c: Ctx, token: string) {
+    setCookie(c, COOKIE, token, {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: new URL(c.req.url).protocol === "https:",
+      path: "/",
+      maxAge: SESSION_DAYS * 86400,
+    });
+  }
 
   async function startSession(c: Ctx, userId: number) {
     const token = newToken();
@@ -127,13 +145,7 @@ export function createApp(options: { fetch?: typeof fetch } = {}) {
       .prepare("INSERT INTO sessions(token_hash, user_id, expires_at) VALUES (?,?,?)")
       .bind(await hashToken(token), userId, now() + SESSION_DAYS * 86400)
       .run();
-    setCookie(c, COOKIE, token, {
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: new URL(c.req.url).protocol === "https:",
-      path: "/",
-      maxAge: SESSION_DAYS * 86400,
-    });
+    setSessionCookie(c, token);
   }
 
   // ---------- autenticação ----------
